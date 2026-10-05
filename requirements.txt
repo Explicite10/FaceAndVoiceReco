@@ -1,0 +1,12 @@
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+jinja2==3.1.4
+pillow==10.2.0
+onnxruntime==1.23.2
+opencv-contrib-python==4.13.0.90
+numpy==2.4.2
+aiofiles==24.1.0
+faster-whisper==1.2.1
+jiwer==4.0.0
+mediapipe==0.10.35

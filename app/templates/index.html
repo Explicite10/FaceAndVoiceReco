@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Verificacion de identidad</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 1180px; margin: 40px auto;
+             background: #fff; color: #111; }
+      .row { display: flex; gap: 24px; align-items: flex-start; }
+      .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; flex: 1; min-width: 0; }
+      video, img.prev { max-width: 100%; border-radius: 12px; border: 1px solid #eee; }
+      video { background: #000; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #fafafa;
+            padding: 12px; border-radius: 10px; border: 1px solid #eee; font-size: 12px; }
+      button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc;
+               cursor: pointer; background: #fff; }
+      button.primary { background: #1f4fd1; color: #fff; border-color: #1f4fd1; }
+      button:disabled { opacity: .45; cursor: not-allowed; }
+      h3 { margin: 18px 0 8px; } h3:first-child { margin-top: 0; }
+      .muted { color: #666; font-size: 12px; }
+      .phrase { font-size: 19px; line-height: 1.5; padding: 14px; border-radius: 10px;
+                background: #f4f7ff; border: 1px solid #ccd8f5; margin: 6px 0 4px; }
+      .timer { font-size: 26px; font-variant-numeric: tabular-nums; margin: 8px 0; }
+      .badge { display: inline-block; padding: 6px 12px; border-radius: 999px;
+               font-weight: bold; color: #fff; font-size: 14px; }
+      .b-approved { background: #1a7f37; } .b-rejected, .b-error { background: #b42318; }
+      .checks { list-style: none; padding: 0; margin: 8px 0; font-size: 13px; }
+      .checks li { padding: 4px 0; border-bottom: 1px solid #f0f0f0; display: flex; gap: 8px; }
+      .checks .ic { width: 16px; flex: none; font-weight: bold; text-align: center; }
+      .checks .passed .ic { color: #1a7f37; } .checks .failed .ic { color: #b42318; }
+      .checks .not_evaluated { color: #999; }
+      .checks code { font-size: 11px; color: #b42318; }
+      .big { font-size: 34px; font-weight: bold; margin: 6px 0; }
+      .overall { padding: 14px; border-radius: 12px; margin-bottom: 14px; border: 1px solid #ddd; }
+      .section { border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }
+      .faces { display: flex; gap: 10px; margin: 8px 0; align-items: flex-start; }
+      .faces figure { margin: 0; flex: 1; min-width: 0; text-align: center; }
+      .faces img, .faces .noface { width: 100%; aspect-ratio: 1; object-fit: cover;
+                                   border-radius: 10px; border: 1px solid #eee; }
+      .faces .noface { display: flex; align-items: center; justify-content: center;
+                       background: #f6f6f6; color: #999; font-size: 12px; }
+      .faces .id img { border: 2px solid #1f4fd1; }
+      .faces figcaption { font-size: 12px; color: #666; margin-top: 4px; line-height: 1.4; }
+      .ok { color: #1a7f37; font-weight: bold; } .bad { color: #b42318; font-weight: bold; }
+      table { border-collapse: collapse; width: 100%; font-size: 13px; }
+      td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+      td:first-child { color: #666; width: 38%; }
+      .warn { color: #b42318; font-size: 13px; }
+      .rec { color: #b42318; font-weight: bold; }
+    </style>
+  </head>
+  <body data-min="{{ min_duration_sec }}" data-max="{{ max_duration_sec }}">
+    <h2>Verificacion de identidad</h2>
+    <p class="muted">
+      Compara el rostro del video contra la identificacion y verifica la frase hablada
+      en el mismo video (<code>POST /api/verify-identity</code>).
+    </p>
+
+    <div class="row">
+      <div class="card">
+        <h3>1) Sube la identificacion</h3>
+        <input type="file" id="idFile" accept="image/*" />
+        <div id="idPrevBox" style="margin-top:8px"></div>
+
+        <h3>2) Graba el video leyendo esta frase</h3>
+        <div class="phrase" id="phrase">{{ expected_phrase }}</div>
+        <p class="muted">Duracion valida: {{ min_duration_sec }}s a {{ max_duration_sec }}s. Mira a la camara mientras hablas.</p>
+
+        <video id="preview" autoplay muted playsinline></video>
+        <div class="timer" id="timer">00.0 s</div>
+
+        <button id="btnRec">Grabar</button>
+        <button id="btnStop" disabled>Detener</button>
+        <p class="muted" style="margin:10px 0 4px">o sube un video ya grabado:</p>
+        <input type="file" id="videoFile" accept="video/*" />
+        <p class="warn" id="warn"></p>
+
+        <h3>3) Verificar</h3>
+        <button id="btnSend" class="primary" disabled>Verificar identidad</button>
+        <p class="muted" id="sendHint">Falta: identificacion y video.</p>
+      </div>
+
+      <div class="card">
+        <h3>Resultado</h3>
+        <div id="result"><p class="muted">Aun sin resultado.</p></div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+      let stream, recorder, chunks = [], tick, t0;
+      let videoBlob = null, videoMime = "", idFile = null;
+      const minDur = Number(document.body.dataset.min);
+      const maxDur = Number(document.body.dataset.max);
+
+      function pickMime() {
+        const opts = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
+        return opts.find((o) => MediaRecorder.isTypeSupported(o)) || "";
+      }
+
+      function refreshSend() {
+        const missing = [];
+        if (!idFile) missing.push("identificacion");
+        if (!videoBlob) missing.push("video");
+        $("btnSend").disabled = missing.length > 0;
+        $("sendHint").textContent = missing.length ? "Falta: " + missing.join(" y ") + "." : "Listo para enviar.";
+      }
+
+      async function init() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 },
+            audio: { echoCancellation: true, noiseSuppression: true },
+          });
+          $("preview").srcObject = stream;
+        } catch (e) {
+          $("warn").textContent = "Sin acceso a camara/microfono (" + e.message + "). Puedes subir un video.";
+          $("btnRec").disabled = true;
+        }
+      }
+
+      const fmt = (s) => s.toFixed(1).padStart(4, "0") + " s";
+
+      function showVideo(src) {
+        const v = $("preview");
+        v.srcObject = null; v.src = src; v.muted = false; v.controls = true;
+      }
+
+      $("idFile").onchange = (e) => {
+        idFile = e.target.files[0] || null;
+        $("idPrevBox").innerHTML = idFile
+          ? `<img class="prev" style="max-height:180px" src="${URL.createObjectURL(idFile)}">` : "";
+        refreshSend();
+      };
+
+      $("btnRec").onclick = () => {
+        chunks = []; videoBlob = null; refreshSend();
+        $("warn").textContent = "";
+        if (stream) { const v = $("preview"); v.src = ""; v.controls = false; v.muted = true; v.srcObject = stream; }
+        videoMime = pickMime();
+        recorder = new MediaRecorder(stream, videoMime ? { mimeType: videoMime } : undefined);
+        recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+        recorder.onstop = onStop;
+        recorder.start();
+        t0 = Date.now();
+        $("btnRec").disabled = true; $("btnStop").disabled = false;
+        tick = setInterval(() => {
+          const s = (Date.now() - t0) / 1000;
+          $("timer").innerHTML = '<span class="rec">REC</span> ' + fmt(s);
+          if (s >= maxDur) $("btnStop").click();
+        }, 100);
+      };
+
+      $("btnStop").onclick = () => {
+        if (recorder && recorder.state !== "inactive") recorder.stop();
+        clearInterval(tick);
+        $("btnStop").disabled = true; $("btnRec").disabled = false;
+      };
+
+      function onStop() {
+        const secs = (Date.now() - t0) / 1000;
+        $("timer").textContent = fmt(secs);
+        videoBlob = new Blob(chunks, { type: videoMime || "video/webm" });
+        showVideo(URL.createObjectURL(videoBlob));
+        if (secs < minDur) {
+          $("warn").textContent = `Grabaste ${secs.toFixed(1)}s y el minimo es ${minDur}s: la voz saldra invalid_audio.`;
+        }
+        refreshSend();
+      }
+
+      $("videoFile").onchange = (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        videoBlob = f; videoMime = f.type;
+        showVideo(URL.createObjectURL(f));
+        $("warn").textContent = "";
+        refreshSend();
+      };
+
+      $("btnSend").onclick = async () => {
+        $("btnSend").disabled = true;
+        $("result").innerHTML = '<p class="muted">Analizando voz y rostro...</p>';
+
+        const ext = (videoMime || "").includes("mp4") ? "mp4" : "webm";
+        const fd = new FormData();
+        fd.append("id_image", idFile, idFile.name);
+        fd.append("video", videoBlob, videoBlob.name || `grabacion.${ext}`);
+        fd.append("include_images", "true");
+
+        try {
+          const res = await fetch("/api/verify-identity", { method: "POST", body: fd });
+          render(res.status, await res.json());
+        } catch (e) {
+          $("result").innerHTML = `<span class="badge b-error">error</span><pre>${esc(e.message)}</pre>`;
+        }
+        refreshSend();
+      };
+
+      const ICON = { passed: "✓", failed: "✗", not_evaluated: "–" };
+      const pct = (x) => (x == null ? "&mdash;" : `${Math.round(x * 100)}%`);
+      const words = (arr) => arr.length
+        ? arr.map((w) => `<code>${esc(w)}</code>`).join(" ")
+        : "<span class='muted'>ninguna</span>";
+
+      function renderChecks(group) {
+        return "<ul class='checks'>" + Object.entries(group).map(([name, c]) =>
+          `<li class="${c.status}"><span class="ic">${ICON[c.status]}</span>
+             <span>${esc(c.message)}${c.code ? ` <code>${esc(c.code)}</code>` : ""}</span></li>`
+        ).join("") + "</ul>";
+      }
+
+      function renderFace(checks, f, art) {
+        let html = renderChecks(checks);
+        if (!f) return html;
+        const imgs = art ? art.segment_face_images : [];
+        const segs = f.segments.map((s, i) => {
+          const img = s.face_detected && imgs[i] ? `<img src="${imgs[i]}">` : `<div class="noface">sin cara</div>`;
+          const when = s.time_sec != null ? ` · ${s.time_sec.toFixed(1)}s` : "";
+          const score = s.face_detected ? `${s.similarity_percent.toFixed(1)}%` : "&mdash;";
+          return `<figure>${img}<figcaption>tramo ${s.index}${when}<br>
+                  <span class="${s.match ? "ok" : "bad"}">${score} ${s.match ? "✓" : "✗"}</span></figcaption></figure>`;
+        }).join("");
+        const idImg = art ? `<figure class="id"><img src="${art.id_face_image}"><figcaption>identificacion</figcaption></figure>` : "";
+        return html + `
+          <div class="big">${f.similarity.average_percent.toFixed(2)}%</div>
+          <p class="muted" style="margin-top:0">Promedio de ${f.segments.length} tramos · caras por cuadro (max): ${f.faces_in_video.max_per_frame}</p>
+          <div class="faces">${idImg}${segs}</div>`;
+      }
+
+      function renderVoice(checks, v) {
+        let html = renderChecks(checks);
+        if (!v) return html;
+        return html + `
+          <div class="big">${v.phrase_match.match_percent.toFixed(2)}%</div>
+          <table>
+            <tr><td>Se escucho</td><td><b>${esc(v.transcript) || "(nada)"}</b></td></tr>
+            <tr><td>Palabras faltantes</td><td>${words(v.phrase_match.missing_words)}</td></tr>
+            <tr><td>Palabras sobrantes</td><td>${words(v.phrase_match.extra_words)}</td></tr>
+            <tr><td>Duracion</td><td>${v.audio.duration_sec}s (voz ${v.audio.speech_sec}s)</td></tr>
+          </table>`;
+      }
+
+      function renderLiveness(checks, l) {
+        let html = renderChecks(checks);
+        if (!l) return html;
+        const a = l.anti_spoofing, s = l.lip_sync;
+        return html + `
+          <table>
+            <tr><td>Probabilidad de cara real</td><td>${pct(a.real_probability)}
+              <div class="muted">${a.by_segment_probability.map((x, i) => `tramo ${i + 1}: ${pct(x)}`).join(" · ")}</div></td></tr>
+            <tr><td>Labios vs. voz</td><td>correlacion ${s.audio_correlation ?? "-"} · movimiento ${s.mouth_motion_speaking ?? "-"}
+              · cara visible ${pct(s.face_tracked_ratio)}</td></tr>
+          </table>`;
+      }
+
+      function shrinkImages(d) {
+        if (!d.artifacts) return d;
+        const short = (u) => (u ? `<base64 ${Math.round(u.length / 1024)} KB>` : null);
+        return { ...d, artifacts: { id_face_image: short(d.artifacts.id_face_image),
+                                    segment_face_images: d.artifacts.segment_face_images.map(short) } };
+      }
+
+      function render(status, d) {
+        if (status !== 200) {
+          $("result").innerHTML = `<span class="badge b-error">HTTP ${status}</span><pre>${esc(JSON.stringify(d, null, 2))}</pre>`;
+          return;
+        }
+        const r = d.result;
+        const failed = r.failed_checks.length
+          ? `<p class="muted" style="margin:6px 0 0">${r.failed_checks.map((x) => `<code>${esc(x)}</code>`).join(" ")}</p>` : "";
+        $("result").innerHTML = `
+          <div class="overall">
+            <span class="badge b-${esc(r.decision)}">${esc(r.decision)}</span>
+            <span class="muted">&nbsp;${d.processing_time_ms} ms · ${esc(d.request_id.slice(0, 8))}</span>
+            <p style="margin:8px 0 0">${esc(r.summary)}</p>${failed}
+          </div>
+          <div class="section"><h3>Rostro (video vs identificacion)</h3>${renderFace(d.checks.face, d.details.face, d.artifacts)}</div>
+          <div class="section"><h3>Voz (frase)</h3>${renderVoice(d.checks.voice, d.details.voice)}</div>
+          <div class="section"><h3>Prueba de vida</h3>${renderLiveness(d.checks.liveness, d.details.liveness)}</div>
+          <details style="margin-top:12px">
+            <summary class="muted">JSON completo</summary>
+            <pre>${esc(JSON.stringify(shrinkImages(d), null, 2))}</pre>
+          </details>`;
+      }
+
+      init();
+    </script>
+  </body>
+</html>

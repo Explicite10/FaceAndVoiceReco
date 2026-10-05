@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.Python
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Datos generados en tiempo de ejecucion
+/uploads/
+/models/
+*.log
+
+# Editor / SO
+.DS_Store
+.idea/
+.vscode/

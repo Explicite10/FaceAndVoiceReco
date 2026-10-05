@@ -1,0 +1,7 @@
+Modelos MiniFASNet de Silent-Face-Anti-Spoofing (Minivision), licencia Apache 2.0.
+https://github.com/minivision-ai/Silent-Face-Anti-Spoofing
+
+Cambios: los pesos originales (.pth de PyTorch) se convirtieron a ONNX sin
+modificar la red ni los pesos, para ejecutarlos con onnxruntime.
+Archivos originales: resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth
+y 4_0_0_80x80_MiniFASNetV1SE.pth.
