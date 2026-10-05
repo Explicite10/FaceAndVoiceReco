@@ -1,8 +1,11 @@
 # FaceAndVoiceReco
 
-API de verificación de identidad a partir de **una foto de identificación (INE)** y **un video corto** de la persona leyendo una frase en voz alta.
+API de verificación de identidad contra **una foto de identificación (INE)**. Tiene dos modos:
 
-En una sola llamada valida tres cosas:
+- **`POST /api/verify-identity`**: con **un video corto** de la persona leyendo una frase en voz alta. Es el más completo.
+- **`POST /api/verify-photo`**: con **una foto** de la persona. Compara las caras y valida la calidad de la foto.
+
+El endpoint de video valida tres cosas en una sola llamada:
 
 | Análisis | Pregunta que responde | Modelos |
 |---|---|---|
@@ -49,6 +52,8 @@ app/
 │   ├── face_engine.py            # YuNet + SFace
 │   ├── video_face.py             # mejor cara por tramo del video
 │   ├── face_service.py           # comparación contra la identificación
+│   ├── photo_verification.py     # foto contra identificación
+│   ├── image_quality.py          # tamaño, nitidez y brillo de la cara
 │   ├── audio_extract.py          # audio del video a 16 kHz mono
 │   ├── asr_engine.py             # modelo Whisper
 │   ├── audio_liveness.py         # filtros de audio + transcripción
@@ -135,6 +140,39 @@ curl -X POST http://localhost:8000/api/verify-identity \
 
 Cada check tiene la forma `{ "status": "passed | failed | not_evaluated", "code": "…", "message": "…" }`. El campo `code` solo viene cuando el check falla y es estable (por ejemplo `face_mismatch`, `spoof_detected` o `phrase_mismatch`), así que el cliente puede depender de él en lugar del mensaje. `not_evaluated` significa que falló un paso previo.
 
+### `POST /api/verify-photo`
+
+Compara una foto de la persona contra la identificación. `multipart/form-data`:
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `id_image` | archivo de imagen | sí | Foto de la identificación |
+| `photo` | archivo de imagen | sí | Foto de la persona (selfie) |
+| `include_images` | bool | no | Agrega los recortes de cara en base64 |
+
+```bash
+curl -X POST http://localhost:8000/api/verify-photo \
+  -F "id_image=@ine.jpg" \
+  -F "photo=@selfie.jpg"
+```
+
+Validaciones (`checks`):
+
+| Grupo | Check | Falla con |
+|---|---|---|
+| `face` | `id_face_detected` | `id_face_not_found` |
+| `face` | `photo_face_detected` | `photo_face_not_found` |
+| `face` | `single_face` | `multiple_faces_detected` |
+| `face` | `face_match` | `face_mismatch` |
+| `quality` | `face_size` | `face_too_small` (lado menor de la cara < 112 px) |
+| `quality` | `sharpness` | `image_blurry` |
+| `quality` | `brightness` | `image_too_dark` / `image_overexposed` |
+| `liveness` | `anti_spoofing` | `spoof_detected` |
+
+La calidad solo se valida en la foto de la persona. La de la identificación se reporta en `details.id_face_quality`, pero no se valida, porque la foto de la INE suele ser chica. La respuesta tiene la misma forma general que la del video (`result`, `checks`, `details`, `artifacts`, `meta`), y en `details.similarity` vienen `score`, `percent` y `threshold_score`.
+
+Este modo es **más débil** que el de video: no hay sincronía de labios ni frase hablada, solo anti-spoofing sobre una imagen.
+
 **Sobre los porcentajes de similitud facial:** `similarity_percent` es una curva sigmoide centrada en el umbral (≥ 50 % equivale a *match*) pensada para mostrarse en pantalla. **No es una probabilidad.** El valor real es `similarity_score` (similitud coseno).
 
 ---
@@ -160,7 +198,7 @@ Los umbrales (similitud facial, anti-spoofing, sincronía de labios, puntaje de 
 ## Limitaciones conocidas
 
 - **La frase no es un reto real.** El cliente puede enviar `expected_phrase`, y la frase por defecto es fija. Alguien con una grabación de la víctima diciendo la frase podría pasar la validación de voz. Para producción, el servidor debería generar una frase aleatoria por sesión y validarla contra esa sesión.
-- **Umbrales sin calibrar.** El de SFace (`0.363`) es el publicado por OpenCV y los de sincronía de labios son provisionales. Hay que ajustarlos con pares reales de INE y video.
+- **Umbrales sin calibrar.** El de SFace (`0.363`) es el publicado por OpenCV, y los de sincronía de labios y calidad de foto son provisionales. Hay que ajustarlos con pares reales de INE y video o foto.
 - No tiene autenticación ni límite de peticiones.
 - No hay pruebas automatizadas.
 

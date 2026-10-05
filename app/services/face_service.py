@@ -2,7 +2,7 @@
 from io import BytesIO
 import base64
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from fastapi import HTTPException, UploadFile
 import math
 import asyncio
@@ -27,7 +27,9 @@ async def read_as_np_rgb(upload: UploadFile) -> np.ndarray:
     if not raw:
         raise HTTPException(status_code=400, detail="La imagen está vacía.")
     try:
-        pil = Image.open(BytesIO(raw)).convert("RGB")
+        # Las fotos de celular suelen venir giradas con una etiqueta EXIF; sin
+        # aplicarla, la cara queda de lado y el detector no la encuentra.
+        pil = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGB")
         return np.array(pil)  # RGB
     except Exception:
         raise HTTPException(status_code=400, detail="No pude leer la imagen. ¿Formato válido?")

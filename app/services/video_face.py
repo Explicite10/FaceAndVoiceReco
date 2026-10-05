@@ -3,14 +3,10 @@ import numpy as np
 
 from app.services.antispoof import real_probability
 from app.services.face_engine import Face, detect_faces, pick_best_face
+from app.services.image_quality import sharpness
 
 # Los candidatos se guardan reducidos para acotar memoria; SFace trabaja a 112 px.
 _MAX_STORED_SIDE = 256
-
-
-def _sharpness(gray_face: np.ndarray) -> float:
-    # A tamano fijo para que caras grandes y chicas sean comparables.
-    return float(cv2.Laplacian(cv2.resize(gray_face, (112, 112)), cv2.CV_64F).var())
 
 
 def best_faces_by_segment(
@@ -86,7 +82,7 @@ def best_faces_by_segment(
             )
             if face_gray.size == 0:
                 continue
-            quality = face.score * _sharpness(face_gray)
+            quality = face.score * sharpness(face_gray)
             live = real_probability(frame_bgr, face.bbox)
 
             crop = frame_rgb[cy1:cy2, cx1:cx2]

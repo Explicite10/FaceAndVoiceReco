@@ -135,3 +135,52 @@ class VerifyIdentityResponse(BaseModel):
     errors: List[ErrorItem]
     artifacts: Optional[Artifacts] = Field(None, description="Solo si se pide include_images=true.")
     meta: Meta
+
+
+# ----- foto contra identificacion
+class PhotoChecks(BaseModel):
+    face: Dict[str, Check]
+    quality: Dict[str, Check]
+    liveness: Dict[str, Check]
+
+
+class PhotoSimilarity(BaseModel):
+    score: float = Field(description="Similitud coseno.")
+    percent: float = Field(description="Mapeo sigmoide para mostrar; >= 50 es match. No es probabilidad.")
+    threshold_score: float
+
+
+class FaceQuality(BaseModel):
+    size_px: int = Field(description="Lado menor de la cara.")
+    sharpness: float = Field(description="Varianza del Laplaciano de la cara a 112 px.")
+    brightness: float = Field(description="Brillo medio de la cara, 0 a 255.")
+    detector_score: float
+
+
+class PhotoAntiSpoofing(BaseModel):
+    real_probability: float
+    threshold_probability: float
+
+
+class PhotoDetails(BaseModel):
+    similarity: Optional[PhotoSimilarity] = None
+    faces_in_photo: int
+    id_face_quality: Optional[FaceQuality] = Field(None, description="Informativo: no se valida.")
+    photo_face_quality: Optional[FaceQuality] = None
+    anti_spoofing: Optional[PhotoAntiSpoofing] = None
+
+
+class PhotoArtifacts(BaseModel):
+    id_face_image: Optional[str] = None
+    photo_face_image: Optional[str] = None
+
+
+class VerifyPhotoResponse(BaseModel):
+    request_id: str
+    timestamp: str = Field(description="ISO 8601 en UTC.")
+    processing_time_ms: int
+    result: Result
+    checks: PhotoChecks
+    details: PhotoDetails
+    artifacts: Optional[PhotoArtifacts] = Field(None, description="Solo si se pide include_images=true.")
+    meta: Meta

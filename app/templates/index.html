@@ -288,5 +288,168 @@
 
       init();
     </script>
+
+    <hr style="margin:48px 0 32px; border:none; border-top:2px solid #eee" />
+
+    <h2>Foto contra identificacion</h2>
+    <p class="muted">
+      Compara una foto de la persona contra la identificacion y valida la calidad de la foto
+      (<code>POST /api/verify-photo</code>).
+    </p>
+
+    <div class="row">
+      <div class="card">
+        <h3>1) Sube la identificacion</h3>
+        <input type="file" id="pIdFile" accept="image/*" />
+        <div id="pIdPrevBox" style="margin-top:8px"></div>
+
+        <h3>2) Foto de la persona</h3>
+        <input type="file" id="pPhotoFile" accept="image/*" />
+        <p class="muted" style="margin:10px 0 4px">o tomala con la camara:</p>
+        <video id="pCam" autoplay muted playsinline style="display:none"></video>
+        <button id="pBtnCam">Activar camara</button>
+        <button id="pBtnShot" disabled>Tomar foto</button>
+        <p class="warn" id="pWarn"></p>
+        <div id="pPhotoPrevBox" style="margin-top:8px"></div>
+
+        <h3>3) Verificar</h3>
+        <button id="pBtnSend" class="primary" disabled>Comparar foto</button>
+        <p class="muted" id="pSendHint">Falta: identificacion y foto.</p>
+      </div>
+
+      <div class="card">
+        <h3>Resultado</h3>
+        <div id="pResult"><p class="muted">Aun sin resultado.</p></div>
+      </div>
+    </div>
+
+    <script>
+      // Seccion independiente: usa sus propios ids (prefijo "p") y reutiliza
+      // $, esc, pct y renderChecks del script de arriba.
+      let pIdFile = null, pPhoto = null, pStream = null;
+
+      function pRefresh() {
+        const missing = [];
+        if (!pIdFile) missing.push("identificacion");
+        if (!pPhoto) missing.push("foto");
+        $("pBtnSend").disabled = missing.length > 0;
+        $("pSendHint").textContent = missing.length ? "Falta: " + missing.join(" y ") + "." : "Listo para enviar.";
+      }
+
+      function pPreview(box, file) {
+        $(box).innerHTML = file ? `<img class="prev" style="max-height:220px" src="${URL.createObjectURL(file)}">` : "";
+      }
+
+      $("pIdFile").onchange = (e) => {
+        pIdFile = e.target.files[0] || null;
+        pPreview("pIdPrevBox", pIdFile);
+        pRefresh();
+      };
+
+      $("pPhotoFile").onchange = (e) => {
+        pPhoto = e.target.files[0] || null;
+        pPreview("pPhotoPrevBox", pPhoto);
+        pRefresh();
+      };
+
+      $("pBtnCam").onclick = async () => {
+        try {
+          pStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+          $("pCam").srcObject = pStream;
+          $("pCam").style.display = "block";
+          $("pBtnCam").disabled = true;
+          $("pBtnShot").disabled = false;
+          $("pWarn").textContent = "";
+        } catch (e) {
+          $("pWarn").textContent = "Sin acceso a la camara (" + e.message + "). Sube una foto.";
+        }
+      };
+
+      $("pBtnShot").onclick = () => {
+        const v = $("pCam");
+        const canvas = document.createElement("canvas");
+        canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+        canvas.getContext("2d").drawImage(v, 0, 0);
+        canvas.toBlob((blob) => {
+          pPhoto = new File([blob], "foto.jpg", { type: "image/jpeg" });
+          $("pPhotoFile").value = "";
+          pPreview("pPhotoPrevBox", pPhoto);
+          pRefresh();
+        }, "image/jpeg", 0.95);
+      };
+
+      $("pBtnSend").onclick = async () => {
+        $("pBtnSend").disabled = true;
+        $("pResult").innerHTML = '<p class="muted">Comparando rostros...</p>';
+
+        const fd = new FormData();
+        fd.append("id_image", pIdFile, pIdFile.name);
+        fd.append("photo", pPhoto, pPhoto.name);
+        fd.append("include_images", "true");
+
+        try {
+          const res = await fetch("/api/verify-photo", { method: "POST", body: fd });
+          pRender(res.status, await res.json());
+        } catch (e) {
+          $("pResult").innerHTML = `<span class="badge b-error">error</span><pre>${esc(e.message)}</pre>`;
+        }
+        pRefresh();
+      };
+
+      function pFaceFigure(src, caption, cls = "") {
+        const img = src ? `<img src="${src}">` : `<div class="noface">sin cara</div>`;
+        return `<figure class="${cls}">${img}<figcaption>${caption}</figcaption></figure>`;
+      }
+
+      function pQualityRow(label, q) {
+        if (!q) return `<tr><td>${label}</td><td>&mdash;</td></tr>`;
+        return `<tr><td>${label}</td><td>cara ${q.size_px}px · nitidez ${q.sharpness} · brillo ${q.brightness}
+                · detector ${pct(q.detector_score)}</td></tr>`;
+      }
+
+      function pRender(status, d) {
+        if (status !== 200) {
+          $("pResult").innerHTML = `<span class="badge b-error">HTTP ${status}</span><pre>${esc(JSON.stringify(d, null, 2))}</pre>`;
+          return;
+        }
+        const r = d.result, det = d.details, art = d.artifacts || {};
+        const failed = r.failed_checks.length
+          ? `<p class="muted" style="margin:6px 0 0">${r.failed_checks.map((x) => `<code>${esc(x)}</code>`).join(" ")}</p>` : "";
+        const sim = det.similarity;
+        const match = d.checks.face.face_match.status === "passed";
+        const short = (u) => (u ? `<base64 ${Math.round(u.length / 1024)} KB>` : null);
+        const shown = d.artifacts
+          ? { ...d, artifacts: { id_face_image: short(art.id_face_image), photo_face_image: short(art.photo_face_image) } } : d;
+
+        $("pResult").innerHTML = `
+          <div class="overall">
+            <span class="badge b-${esc(r.decision)}">${esc(r.decision)}</span>
+            <span class="muted">&nbsp;${d.processing_time_ms} ms · ${esc(d.request_id.slice(0, 8))}</span>
+            <p style="margin:8px 0 0">${esc(r.summary)}</p>${failed}
+          </div>
+          <div class="section"><h3>Rostro (foto vs identificacion)</h3>${renderChecks(d.checks.face)}
+            ${sim ? `<div class="big ${match ? "ok" : "bad"}">${sim.percent.toFixed(2)}%</div>
+                     <p class="muted" style="margin-top:0">similitud coseno ${sim.score} · umbral ${sim.threshold_score} · caras en la foto: ${det.faces_in_photo}</p>` : ""}
+            <div class="faces" style="max-width:360px">
+              ${pFaceFigure(art.id_face_image, "identificacion", "id")}
+              ${pFaceFigure(art.photo_face_image, "foto")}
+            </div>
+          </div>
+          <div class="section"><h3>Calidad de la foto</h3>${renderChecks(d.checks.quality)}
+            <table>
+              ${pQualityRow("Foto", det.photo_face_quality)}
+              ${pQualityRow("Identificacion (no se valida)", det.id_face_quality)}
+            </table>
+          </div>
+          <div class="section"><h3>Prueba de vida</h3>${renderChecks(d.checks.liveness)}
+            ${det.anti_spoofing ? `<table><tr><td>Probabilidad de cara real</td><td>${pct(det.anti_spoofing.real_probability)}
+              <span class="muted">(minimo ${pct(det.anti_spoofing.threshold_probability)})</span></td></tr></table>` : ""}
+          </div>
+          <details style="margin-top:12px">
+            <summary class="muted">JSON completo</summary>
+            <pre>${esc(JSON.stringify(shown, null, 2))}</pre>
+          </details>`;
+      }
+    </script>
   </body>
 </html>

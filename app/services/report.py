@@ -13,6 +13,12 @@ from app.core.config import settings
 
 API_VERSION = "1.0.0"
 
+_FACE_MODELS = {
+    "face_detection": "YuNet 2023mar",
+    "face_recognition": "SFace 2021dec",
+    "anti_spoofing": "MiniFASNet V2 + V1SE (Silent-Face)",
+}
+
 
 def _check(status: str, message: str, code: str | None = None) -> dict:
     return {"status": status, "code": code if status == "failed" else None, "message": message}
@@ -312,10 +318,128 @@ def build_report(
             "api_version": API_VERSION,
             "models": {
                 "speech_to_text": f"faster-whisper {settings.asr_model_size} ({settings.asr_device}/{settings.asr_compute_type})",
-                "face_detection": "YuNet 2023mar",
-                "face_recognition": "SFace 2021dec",
-                "anti_spoofing": "MiniFASNet V2 + V1SE (Silent-Face)",
+                **_FACE_MODELS,
                 "face_landmarks": "MediaPipe Face Landmarker v1",
             },
         },
+    }
+
+
+# ------------------------------------------------- foto contra identificacion
+def _photo_checks(a: dict) -> dict:
+    id_face, photo_face = a["id_face"], a["photo_face"]
+    checks = {
+        "face": {
+            "id_face_detected": (
+                _passed("Se detectó la cara en la identificación.") if id_face else
+                _failed("id_face_not_found", "No se detectó rostro en la identificación.")
+            ),
+            "photo_face_detected": (
+                _passed("Se detectó la cara en la foto.") if photo_face else
+                _failed("photo_face_not_found", "No se detectó rostro en la foto.")
+            ),
+        },
+    }
+    if photo_face is None:
+        why = "no se detectó rostro en la foto"
+        checks["face"]["single_face"] = _skipped(why)
+        checks["face"]["face_match"] = _skipped(why)
+        checks["quality"] = {k: _skipped(why) for k in ("face_size", "sharpness", "brightness")}
+        checks["liveness"] = {"anti_spoofing": _skipped(why)}
+        return checks
+
+    n = a["faces_in_photo"]
+    checks["face"]["single_face"] = (
+        _passed("Solo aparece una persona en la foto.") if n == 1 else
+        _failed("multiple_faces_detected", f"Se detectaron {n} caras en la foto.")
+    )
+    pct = a["similarity_percent"]
+    if id_face is None:
+        checks["face"]["face_match"] = _skipped("no se detectó rostro en la identificación")
+    elif a["similarity"] >= settings.sim_threshold:
+        checks["face"]["face_match"] = _passed(f"La cara coincide con la identificación ({pct}%).")
+    else:
+        checks["face"]["face_match"] = _failed("face_mismatch", f"La cara no coincide con la identificación ({pct}%).")
+
+    q = photo_face["quality"]
+    lo, hi = settings.photo_min_brightness, settings.photo_max_brightness
+    if q["brightness"] < lo:
+        brightness = _failed("image_too_dark", f"La foto está muy oscura (brillo {q['brightness']:g}; mínimo {lo:g}).")
+    elif q["brightness"] > hi:
+        brightness = _failed("image_overexposed", f"La foto está sobreexpuesta (brillo {q['brightness']:g}; máximo {hi:g}).")
+    else:
+        brightness = _passed(f"La iluminación es adecuada (brillo {q['brightness']:g}).")
+    checks["quality"] = {
+        "face_size": (
+            _passed(f"La cara tiene buen tamaño ({q['size_px']} px).")
+            if q["size_px"] >= settings.photo_min_face_px else
+            _failed("face_too_small", f"La cara mide {q['size_px']} px; mínimo {settings.photo_min_face_px} px.")
+        ),
+        "sharpness": (
+            _passed(f"La foto es nítida (nitidez {q['sharpness']:g}).")
+            if q["sharpness"] >= settings.photo_min_sharpness else
+            _failed("image_blurry", f"La foto está borrosa (nitidez {q['sharpness']:g}; mínimo {settings.photo_min_sharpness:g}).")
+        ),
+        "brightness": brightness,
+    }
+
+    real_pct = round(photo_face["real_probability"] * 100)
+    checks["liveness"] = {
+        "anti_spoofing": (
+            _passed(f"La cara parece real, no una pantalla ni una foto ({real_pct}%).")
+            if photo_face["real_probability"] >= settings.antispoof_threshold else
+            _failed(
+                "spoof_detected",
+                f"Posible pantalla, foto o máscara (probabilidad de cara real {real_pct}%; "
+                f"mínimo {round(settings.antispoof_threshold * 100)}%).",
+            )
+        ),
+    }
+    return checks
+
+
+def build_photo_report(analysis: dict, *, elapsed_ms: int, include_images: bool) -> dict:
+    a = analysis
+    checks = _photo_checks(a)
+    failed = [
+        (f"{group}.{name}", c) for group, items in checks.items() for name, c in items.items() if c["status"] == "failed"
+    ]
+    approved = not failed
+    if approved:
+        summary = "Aprobado: la foto coincide con la identificación, tiene buena calidad y la cara parece real."
+    else:
+        problems = [c["message"].rstrip(".") for _, c in failed]
+        summary = "Rechazado: " + "; ".join(x[:1].lower() + x[1:] for x in problems) + "."
+
+    id_face, photo_face = a["id_face"], a["photo_face"]
+    return {
+        "request_id": uuid.uuid4().hex,
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "processing_time_ms": elapsed_ms,
+        "result": {
+            "decision": "approved" if approved else "rejected",
+            "approved": approved,
+            "failed_checks": [name for name, _ in failed],
+            "summary": summary,
+        },
+        "checks": checks,
+        "details": {
+            "similarity": None if a["similarity"] is None else {
+                "score": a["similarity"],
+                "percent": a["similarity_percent"],
+                "threshold_score": settings.sim_threshold,
+            },
+            "faces_in_photo": a["faces_in_photo"],
+            "id_face_quality": id_face["quality"] if id_face else None,
+            "photo_face_quality": photo_face["quality"] if photo_face else None,
+            "anti_spoofing": None if photo_face is None else {
+                "real_probability": photo_face["real_probability"],
+                "threshold_probability": settings.antispoof_threshold,
+            },
+        },
+        "artifacts": {
+            "id_face_image": id_face["data_uri"] if id_face else None,
+            "photo_face_image": photo_face["data_uri"] if photo_face else None,
+        } if include_images else None,
+        "meta": {"api_version": API_VERSION, "models": dict(_FACE_MODELS)},
     }

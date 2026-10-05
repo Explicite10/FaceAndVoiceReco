@@ -53,4 +53,12 @@ class Settings(BaseModel):
     lip_motion_min: float = 0.004          # movimiento medio de la boca al hablar
     lip_corr_min: float = 0.2              # correlacion boca vs. energia de la voz
 
+    # ---------- Foto contra identificacion ----------
+    # Calidad minima de la cara en la foto. Valores PROVISIONALES: calibrar con
+    # fotos reales aceptadas y rechazadas.
+    photo_min_face_px: int = 112           # lado menor de la cara; SFace trabaja a 112 px
+    photo_min_sharpness: float = 30.0      # varianza del Laplaciano de la cara a 112 px
+    photo_min_brightness: float = 50.0     # brillo medio de la cara (0-255)
+    photo_max_brightness: float = 210.0
+
 settings = Settings()
