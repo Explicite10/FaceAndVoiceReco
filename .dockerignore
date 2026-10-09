@@ -12,3 +12,6 @@ venv/
 .vscode/
 *.log
 models/
+uploads/
+.env
+README.md

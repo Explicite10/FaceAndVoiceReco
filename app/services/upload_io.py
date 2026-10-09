@@ -8,6 +8,24 @@ from fastapi import UploadFile, HTTPException
 # .webm es lo que graba MediaRecorder en Chrome/Firefox; Safari da .mp4.
 ALLOWED_VIDEO_EXT = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
 
+_CHUNK = 1024 * 1024  # 1MB
+
+
+async def read_upload_limited(upload: UploadFile, max_mb: int, label: str) -> bytes:
+    """Lee el upload a memoria por chunks y corta en cuanto pasa de max_mb."""
+    limit_bytes = max_mb * 1024 * 1024
+    parts: list[bytes] = []
+    size = 0
+    while True:
+        chunk = await upload.read(_CHUNK)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > limit_bytes:
+            raise HTTPException(status_code=413, detail=f"{label} demasiado grande (>{max_mb}MB).")
+        parts.append(chunk)
+    return b"".join(parts)
+
 
 async def save_upload_to_temp(
     upload: UploadFile,
@@ -40,7 +58,7 @@ async def save_upload_to_temp(
 
     async with aiofiles.open(temp_path, "wb") as out:
         while True:
-            chunk = await upload.read(1024 * 1024)  # 1MB
+            chunk = await upload.read(_CHUNK)
             if not chunk:
                 break
             size += len(chunk)

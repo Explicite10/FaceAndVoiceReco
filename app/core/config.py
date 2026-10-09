@@ -61,4 +61,17 @@ class Settings(BaseModel):
     photo_min_brightness: float = 50.0     # brillo medio de la cara (0-255)
     photo_max_brightness: float = 210.0
 
+    # ---------- Limites de uso ----------
+    # Por IP del cliente; detras de un proxy, uvicorn la toma de X-Forwarded-For
+    # (ver FORWARDED_ALLOW_IPS en el Dockerfile).
+    # Se cuenta en memoria: vale con un solo worker de uvicorn.
+    rate_limit_requests: int = int(os.getenv("RATE_LIMIT_REQUESTS", "10"))  # 0 = sin limite
+    rate_limit_window_sec: int = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60"))
+
+    # Subidas. Ojo: FastAPI recibe el request completo antes de estas
+    # validaciones; si hay un proxy al frente, conviene que limite el body.
+    max_video_mb: int = int(os.getenv("MAX_VIDEO_MB", "50"))   # 20 s a 1080p pesan ~45 MB
+    max_image_mb: int = int(os.getenv("MAX_IMAGE_MB", "10"))
+    max_image_megapixels: int = 50   # se revisa en el encabezado, antes de decodificar
+
 settings = Settings()

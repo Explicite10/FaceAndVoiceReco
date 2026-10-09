@@ -9,10 +9,14 @@ import asyncio
 
 from app.core.config import settings
 from app.services.errors import CheckError
+from app.services.upload_io import read_upload_limited
 from app.services.face_engine import (
     cosine_similarity, detect_faces, embed, pick_best_face, to_bbox_dict
 )
 from app.services.video_face import best_faces_by_segment
+
+# MPO es como Pillow reporta los JPEG de varias capas de algunos celulares.
+ALLOWED_IMAGE_FORMATS = {"JPEG", "MPO", "PNG", "WEBP"}
 
 
 def ensure_image(upload: UploadFile, field_name: str) -> None:
@@ -22,17 +26,36 @@ def ensure_image(upload: UploadFile, field_name: str) -> None:
         raise HTTPException(status_code=400, detail=f"'{field_name}' debe ser una imagen.")
 
 
-async def read_as_np_rgb(upload: UploadFile) -> np.ndarray:
-    raw = await upload.read()
+async def read_as_np_rgb(upload: UploadFile, field_name: str) -> np.ndarray:
+    raw = await read_upload_limited(upload, settings.max_image_mb, f"'{field_name}'")
     if not raw:
-        raise HTTPException(status_code=400, detail="La imagen está vacía.")
+        raise HTTPException(status_code=400, detail=f"'{field_name}' está vacía.")
+    try:
+        img = Image.open(BytesIO(raw))  # solo lee el encabezado
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"No pude leer '{field_name}'. ¿Formato válido?")
+
+    # Se valida el formato real, no la extension ni el content-type que manda el cliente.
+    if img.format not in ALLOWED_IMAGE_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{field_name}' tiene formato {img.format}; se aceptan JPEG, PNG y WEBP.",
+        )
+    # Antes de decodificar: una imagen chica en bytes puede ocupar GBs en memoria.
+    megapixels = img.width * img.height / 1_000_000
+    if megapixels > settings.max_image_megapixels:
+        raise HTTPException(
+            status_code=413,
+            detail=f"'{field_name}' es demasiado grande ({megapixels:.0f} MP; máximo {settings.max_image_megapixels} MP).",
+        )
+
     try:
         # Las fotos de celular suelen venir giradas con una etiqueta EXIF; sin
         # aplicarla, la cara queda de lado y el detector no la encuentra.
-        pil = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGB")
+        pil = ImageOps.exif_transpose(img).convert("RGB")
         return np.array(pil)  # RGB
     except Exception:
-        raise HTTPException(status_code=400, detail="No pude leer la imagen. ¿Formato válido?")
+        raise HTTPException(status_code=400, detail=f"No pude leer '{field_name}'. ¿Archivo dañado?")
 
 
 def crop_face(np_rgb: np.ndarray, bbox: dict):

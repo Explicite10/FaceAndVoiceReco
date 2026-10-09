@@ -74,10 +74,25 @@ app/
 
 ```bash
 docker build -t face-voice-reco .
-docker run -p 7860:7860 face-voice-reco
+docker run -d --name face-voice-reco --restart unless-stopped -p 7860:7860 face-voice-reco
 ```
 
-La imagen ya trae todos los modelos, así que arranca sin descargar nada. Se construye para `linux/amd64` porque MediaPipe no publica paquete para Linux ARM; en Mac con Apple Silicon funciona mediante emulación, aunque más lento.
+La imagen ya trae todos los modelos, así que arranca sin descargar nada. Corre con un usuario sin privilegios y tiene un `HEALTHCHECK` contra `GET /health`: `docker ps` muestra `healthy` cuando los modelos ya cargaron.
+
+Se construye para `linux/amd64` porque MediaPipe no publica paquete para Linux ARM; en Mac con Apple Silicon funciona mediante emulación, aunque más lento.
+
+Para cambiar la configuración, pasa variables con `-e` (ver [Configuración](#configuración)). Por ejemplo, con un modelo de Whisper más grande horneado en la imagen:
+
+```bash
+docker build --build-arg ASR_MODEL_SIZE=medium -t face-voice-reco .
+```
+
+**Límites que aplica la API:**
+
+- Video: 50 MB. Imágenes: 10 MB y 50 megapixeles; formatos JPEG, PNG y WEBP.
+- 10 verificaciones por minuto por IP, sumando ambos endpoints. Al pasarse responde `429` con `Retry-After`.
+
+Si la API se publica detrás de un proxy o balanceador, define `FORWARDED_ALLOW_IPS` con la IP de ese proxy. Si no, el rate limit ve a todos los usuarios con la IP del proxy y los cuenta como uno solo. El conteo es en memoria, así que la API debe correr con un solo worker de uvicorn (como está configurada).
 
 ### Local
 
@@ -104,7 +119,7 @@ Abre `http://localhost:8000` para usar la página de prueba con la cámara, o `h
 | Campo | Tipo | Requerido | Descripción |
 |---|---|---|---|
 | `id_image` | archivo de imagen | sí | Foto de la identificación |
-| `video` | `.mp4` `.mov` `.m4v` `.avi` `.mkv` `.webm` | sí | Video de 4 a 20 s, máximo 80 MB |
+| `video` | `.mp4` `.mov` `.m4v` `.avi` `.mkv` `.webm` | sí | Video de 4 a 20 s, máximo 50 MB |
 | `expected_phrase` | texto | no | Frase esperada; si se omite, usa la configurada |
 | `include_images` | bool | no | Agrega los recortes de cara en base64 (~70 KB) |
 
@@ -190,6 +205,11 @@ Variables de entorno:
 | `ASR_CPU_THREADS` | `4` | Hilos de CPU para Whisper |
 | `ASR_MAX_CONCURRENCY` | `1` | Transcripciones simultáneas (≈ núcleos / hilos) |
 | `FACE_MODELS_DIR` | `models/` | Carpeta de los modelos descargados |
+| `RATE_LIMIT_REQUESTS` | `10` | Verificaciones permitidas por IP en la ventana; `0` lo desactiva |
+| `RATE_LIMIT_WINDOW_SEC` | `60` | Duración de la ventana del rate limit |
+| `MAX_VIDEO_MB` | `50` | Tamaño máximo del video |
+| `MAX_IMAGE_MB` | `10` | Tamaño máximo de cada imagen |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | IPs del proxy de las que se acepta `X-Forwarded-For` |
 
 Los umbrales (similitud facial, anti-spoofing, sincronía de labios, puntaje de la frase, duraciones) están en [`app/core/config.py`](app/core/config.py).
 
@@ -199,7 +219,7 @@ Los umbrales (similitud facial, anti-spoofing, sincronía de labios, puntaje de 
 
 - **La frase no es un reto real.** El cliente puede enviar `expected_phrase`, y la frase por defecto es fija. Alguien con una grabación de la víctima diciendo la frase podría pasar la validación de voz. Para producción, el servidor debería generar una frase aleatoria por sesión y validarla contra esa sesión.
 - **Umbrales sin calibrar.** El de SFace (`0.363`) es el publicado por OpenCV, y los de sincronía de labios y calidad de foto son provisionales. Hay que ajustarlos con pares reales de INE y video o foto.
-- No tiene autenticación ni límite de peticiones.
+- No tiene autenticación.
 - No hay pruebas automatizadas.
 
 ---

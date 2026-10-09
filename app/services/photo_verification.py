@@ -65,8 +65,8 @@ async def verify_photo(id_image: UploadFile, photo: UploadFile, include_images: 
 
     ensure_image(id_image, "id_image")
     ensure_image(photo, "photo")
-    np_id = await read_as_np_rgb(id_image)
-    np_photo = await read_as_np_rgb(photo)
+    np_id = await read_as_np_rgb(id_image, "id_image")
+    np_photo = await read_as_np_rgb(photo, "photo")
 
     analysis = await asyncio.to_thread(compare_photo_with_id, np_id, np_photo, include_images)
     return build_photo_report(

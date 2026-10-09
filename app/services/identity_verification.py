@@ -3,6 +3,7 @@ import time
 
 from fastapi import HTTPException, UploadFile
 
+from app.core.config import settings
 from app.services.audio_liveness import verify_voice_from_path
 from app.services.liveness import check_liveness
 from app.services.report import build_report
@@ -37,13 +38,13 @@ async def verify_identity(
     t0 = time.time()
 
     ensure_image(id_image, "id_image")
-    np_id = await read_as_np_rgb(id_image)
+    np_id = await read_as_np_rgb(id_image, "id_image")
 
     app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     upload_dir = os.path.join(os.path.dirname(app_dir), "uploads")
     # Se guarda una sola vez: el stream del upload no se puede leer dos veces.
     temp_path = await save_upload_to_temp(
-        video, upload_dir, allowed_ext=ALLOWED_VIDEO_EXT, max_mb=80
+        video, upload_dir, allowed_ext=ALLOWED_VIDEO_EXT, max_mb=settings.max_video_mb
     )
 
     try:

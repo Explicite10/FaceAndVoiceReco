@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Dependencias del sistema:
 # - libgl1 y libglib2.0-0: necesarias para OpenCV
 # - ffmpeg: ayuda a leer videos en entornos slim
-# - ca-certificates/curl/git: útil para descargas y debug
+# - ca-certificates/curl: descarga de modelos y healthcheck
 # - libportaudio2: mediapipe importa sounddevice al cargarse
 # - libegl1/libgles2: mediapipe enlaza EGL/GLES aunque corra en CPU
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,11 +20,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
     ca-certificates \
-    git \
     libportaudio2 \
     libegl1 \
     libgles2 \
   && rm -rf /var/lib/apt/lists/*
+
+# Usuario sin privilegios: si alguien explota un decodificador de imagen o
+# video, no queda como root dentro del contenedor.
+RUN useradd --create-home --uid 1000 app
 
 WORKDIR /app
 
@@ -57,8 +60,21 @@ RUN cd /app/models && \
 # Copia tu código
 COPY app /app/app
 
-# Hugging Face Spaces suele exponer 7860
+# uploads/ guarda los videos mientras se procesan; el usuario app necesita
+# escribir ahi y en la cache de modelos.
+RUN mkdir -p /app/uploads && chown -R app:app /app/uploads /app/models /app/.cache
+USER app
+
 EXPOSE 7860
 
-# Respeta PORT si HF lo define
-CMD ["bash", "-lc", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Los modelos tardan unos segundos en cargar al arrancar: start-period los cubre.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT:-7860}/health" || exit 1
+
+# Si se publica detras de un proxy o balanceador, FORWARDED_ALLOW_IPS debe
+# tener su IP: asi el rate limit cuenta por la IP real del cliente
+# (X-Forwarded-For) y no por la del proxy.
+# Un solo worker: los modelos ocupan memoria por proceso y el rate limit
+# se cuenta en memoria.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
+CMD ["bash", "-lc", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860} --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS}\""]

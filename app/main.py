@@ -27,6 +27,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 
+@app.get("/health", include_in_schema=False)
+def health():
+    # Responde solo cuando el lifespan ya cargo los modelos.
+    return {"status": "ok"}
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home(request: Request):
     return templates.TemplateResponse(
