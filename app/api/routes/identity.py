@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.core.rate_limit import verification_limiter
+from app.core.security import require_api_key
 from app.schemas.identity import VerifyIdentityResponse, VerifyPhotoResponse
 from app.services.identity_verification import verify_identity
 from app.services.photo_verification import verify_photo
@@ -13,7 +14,8 @@ router = APIRouter(tags=["Identity"])
 @router.post(
     "/verify-identity",
     response_model=VerifyIdentityResponse,
-    dependencies=[Depends(verification_limiter)],
+    # El orden importa: primero se identifica el proyecto, luego se cuenta.
+    dependencies=[Depends(require_api_key), Depends(verification_limiter)],
 )
 async def verify_identity_endpoint(
     id_image: UploadFile = File(...),
@@ -32,7 +34,7 @@ async def verify_identity_endpoint(
 @router.post(
     "/verify-photo",
     response_model=VerifyPhotoResponse,
-    dependencies=[Depends(verification_limiter)],
+    dependencies=[Depends(require_api_key), Depends(verification_limiter)],
 )
 async def verify_photo_endpoint(
     id_image: UploadFile = File(...),

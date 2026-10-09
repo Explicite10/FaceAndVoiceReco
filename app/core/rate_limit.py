@@ -7,12 +7,15 @@ from fastapi import HTTPException, Request
 
 from app.core.config import settings
 
-# Por encima de estas IPs registradas se limpian las que ya no tienen hits.
+# Por encima de estos clientes registrados se limpian los que ya no tienen hits.
 _PURGE_AT = 10_000
 
 
 class RateLimiter:
-    """Ventana deslizante por IP, en memoria. Se usa como dependencia de FastAPI."""
+    """Ventana deslizante en memoria. Se usa como dependencia de FastAPI.
+
+    Cuenta por proyecto si require_api_key ya lo identifico; si no, por IP.
+    """
 
     def __init__(self, limit: int, window_sec: float):
         self.limit = limit
@@ -24,7 +27,11 @@ class RateLimiter:
         if self.limit <= 0:
             return
 
-        key = request.client.host if request.client else "unknown"
+        project = getattr(request.state, "client", None)
+        if project:
+            key = f"key:{project}"
+        else:
+            key = f"ip:{request.client.host if request.client else 'unknown'}"
         now = time.monotonic()
         with self._lock:
             hits = self._hits[key]

@@ -74,7 +74,15 @@ app/
 
 ```bash
 docker build -t face-voice-reco .
-docker run -d --name face-voice-reco --restart unless-stopped -p 7860:7860 face-voice-reco
+docker run -d --name face-voice-reco --restart unless-stopped -p 7860:7860 --env-file .env face-voice-reco
+```
+
+El archivo `.env` va junto al proyecto en el servidor (no se sube a git ni entra a la imagen) y tiene la configuración de producción, por ejemplo:
+
+```
+API_KEYS=crm:LLAVE_DEL_CRM,portal:LLAVE_DEL_PORTAL
+CORS_ORIGINS=https://portal.tuempresa.com
+RATE_LIMIT_REQUESTS=20
 ```
 
 La imagen ya trae todos los modelos, así que arranca sin descargar nada. Corre con un usuario sin privilegios y tiene un `HEALTHCHECK` contra `GET /health`: `docker ps` muestra `healthy` cuando los modelos ya cargaron.
@@ -90,7 +98,7 @@ docker build --build-arg ASR_MODEL_SIZE=medium -t face-voice-reco .
 **Límites que aplica la API:**
 
 - Video: 50 MB. Imágenes: 10 MB y 50 megapixeles; formatos JPEG, PNG y WEBP.
-- 10 verificaciones por minuto por IP, sumando ambos endpoints. Al pasarse responde `429` con `Retry-After`.
+- 10 verificaciones por minuto por proyecto (API key), sumando ambos endpoints; sin llaves configuradas, por IP. Al pasarse responde `429` con `Retry-After`.
 
 Si la API se publica detrás de un proxy o balanceador, define `FORWARDED_ALLOW_IPS` con la IP de ese proxy. Si no, el rate limit ve a todos los usuarios con la IP del proxy y los cuenta como uno solo. El conteo es en memoria, así que la API debe correr con un solo worker de uvicorn (como está configurada).
 
@@ -107,6 +115,31 @@ uvicorn app.main:app --reload
 En el primer arranque se descargan los modelos de rostro y de MediaPipe a `models/` (con verificación SHA-256), y el modelo de Whisper a la caché de Hugging Face.
 
 Abre `http://localhost:8000` para usar la página de prueba con la cámara, o `http://localhost:8000/docs` para la documentación interactiva.
+
+---
+
+## Acceso: API keys y CORS
+
+Cada proyecto que consume la API tiene su propia llave y la manda en el header `X-API-Key`:
+
+```bash
+curl -X POST https://tu-servidor/api/verify-photo \
+  -H "X-API-Key: LLAVE_DEL_PROYECTO" \
+  -F "id_image=@ine.jpg" \
+  -F "photo=@selfie.jpg"
+```
+
+- Las llaves se configuran en `API_KEYS` como `proyecto:llave` separados por coma. Para generar una llave:
+  ```bash
+  python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+  ```
+- Sin llave o con una llave incorrecta, la API responde `401`. `GET /health` no pide llave.
+- Para dar de baja un proyecto, quita su llave de `API_KEYS` y reinicia el contenedor; los demás no se enteran.
+- El rate limit se cuenta por proyecto, así que un proyecto con mucho tráfico no le quita cupo a los demás.
+- Si `API_KEYS` está vacío, la API **no pide autenticación**. Es solo para desarrollo, y al arrancar se advierte en el log. Si `API_KEYS` está mal escrito, el contenedor no arranca en lugar de quedar abierto.
+- En Swagger (`/docs`), el botón **Authorize** permite poner la llave para probar.
+
+**CORS** solo hace falta si el navegador de los usuarios llama directo a la API. Si llama el backend de cada proyecto, no se configura. Los orígenes permitidos van en `CORS_ORIGINS`, separados por coma. Ojo: una llave usada desde un frontend queda visible para cualquiera que abra las herramientas del navegador, así que lo recomendable es que las llamadas pasen por el backend de cada proyecto.
 
 ---
 
@@ -205,7 +238,9 @@ Variables de entorno:
 | `ASR_CPU_THREADS` | `4` | Hilos de CPU para Whisper |
 | `ASR_MAX_CONCURRENCY` | `1` | Transcripciones simultáneas (≈ núcleos / hilos) |
 | `FACE_MODELS_DIR` | `models/` | Carpeta de los modelos descargados |
-| `RATE_LIMIT_REQUESTS` | `10` | Verificaciones permitidas por IP en la ventana; `0` lo desactiva |
+| `API_KEYS` | vacío | `proyecto:llave` separados por coma; vacío = sin autenticación (solo desarrollo) |
+| `CORS_ORIGINS` | vacío | Orígenes de navegador permitidos, separados por coma; vacío = sin CORS |
+| `RATE_LIMIT_REQUESTS` | `10` | Verificaciones permitidas por proyecto (o por IP sin llaves) en la ventana; `0` lo desactiva |
 | `RATE_LIMIT_WINDOW_SEC` | `60` | Duración de la ventana del rate limit |
 | `MAX_VIDEO_MB` | `50` | Tamaño máximo del video |
 | `MAX_IMAGE_MB` | `10` | Tamaño máximo de cada imagen |
@@ -219,7 +254,6 @@ Los umbrales (similitud facial, anti-spoofing, sincronía de labios, puntaje de 
 
 - **La frase no es un reto real.** El cliente puede enviar `expected_phrase`, y la frase por defecto es fija. Alguien con una grabación de la víctima diciendo la frase podría pasar la validación de voz. Para producción, el servidor debería generar una frase aleatoria por sesión y validarla contra esa sesión.
 - **Umbrales sin calibrar.** El de SFace (`0.363`) es el publicado por OpenCV, y los de sincronía de labios y calidad de foto son provisionales. Hay que ajustarlos con pares reales de INE y video o foto.
-- No tiene autenticación.
 - No hay pruebas automatizadas.
 
 ---

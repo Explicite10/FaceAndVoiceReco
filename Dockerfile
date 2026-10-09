@@ -45,16 +45,18 @@ RUN mkdir -p /app/.cache/huggingface && \
 
 # Modelos de rostro de OpenCV Zoo (YuNet MIT + SFace Apache 2.0), con checksum
 # para que una descarga corrupta o un modelo cambiado rompa el build.
+# Reintentos y timeout: sin ellos, una conexion trabada deja el build colgado.
 ARG ZOO=https://github.com/opencv/opencv_zoo/raw/main/models
+ARG CURL="curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600"
 RUN mkdir -p /app/models && cd /app/models && \
-    curl -fsSL -o face_detection_yunet_2023mar.onnx  ${ZOO}/face_detection_yunet/face_detection_yunet_2023mar.onnx && \
-    curl -fsSL -o face_recognition_sface_2021dec.onnx ${ZOO}/face_recognition_sface/face_recognition_sface_2021dec.onnx && \
+    $CURL -o face_detection_yunet_2023mar.onnx  ${ZOO}/face_detection_yunet/face_detection_yunet_2023mar.onnx && \
+    $CURL -o face_recognition_sface_2021dec.onnx ${ZOO}/face_recognition_sface/face_recognition_sface_2021dec.onnx && \
     echo "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4  face_detection_yunet_2023mar.onnx" | sha256sum -c - && \
     echo "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79  face_recognition_sface_2021dec.onnx" | sha256sum -c -
 
 # MediaPipe Face Landmarker (Apache 2.0) para la sincronia labios-voz.
 RUN cd /app/models && \
-    curl -fsSL -o face_landmarker.task https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task && \
+    $CURL -o face_landmarker.task https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task && \
     echo "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff  face_landmarker.task" | sha256sum -c -
 
 # Copia tu código

@@ -55,6 +55,10 @@
       Compara el rostro del video contra la identificacion y verifica la frase hablada
       en el mismo video (<code>POST /api/verify-identity</code>).
     </p>
+    <p class="muted">
+      API key (si el servidor tiene <code>API_KEYS</code>):
+      <input type="password" id="apiKey" autocomplete="off" style="width:320px" placeholder="X-API-Key" />
+    </p>
 
     <div class="row">
       <div class="card">
@@ -88,6 +92,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
+      const authHeaders = () => ($("apiKey").value ? { "X-API-Key": $("apiKey").value } : {});
       const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -191,7 +196,7 @@
         fd.append("include_images", "true");
 
         try {
-          const res = await fetch("/api/verify-identity", { method: "POST", body: fd });
+          const res = await fetch("/api/verify-identity", { method: "POST", body: fd, headers: authHeaders() });
           render(res.status, await res.json());
         } catch (e) {
           $("result").innerHTML = `<span class="badge b-error">error</span><pre>${esc(e.message)}</pre>`;
@@ -325,7 +330,7 @@
 
     <script>
       // Seccion independiente: usa sus propios ids (prefijo "p") y reutiliza
-      // $, esc, pct y renderChecks del script de arriba.
+      // $, esc, pct, renderChecks y authHeaders del script de arriba.
       let pIdFile = null, pPhoto = null, pStream = null;
 
       function pRefresh() {
@@ -388,7 +393,7 @@
         fd.append("include_images", "true");
 
         try {
-          const res = await fetch("/api/verify-photo", { method: "POST", body: fd });
+          const res = await fetch("/api/verify-photo", { method: "POST", body: fd, headers: authHeaders() });
           pRender(res.status, await res.json());
         } catch (e) {
           $("pResult").innerHTML = `<span class="badge b-error">error</span><pre>${esc(e.message)}</pre>`;

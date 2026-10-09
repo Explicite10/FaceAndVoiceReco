@@ -2,6 +2,36 @@ import os
 
 from pydantic import BaseModel
 
+_MIN_KEY_LEN = 24
+
+
+def _parse_api_keys(raw: str) -> dict[str, str]:
+    """API_KEYS="proyecto1:llave1,proyecto2:llave2" -> {"proyecto1": "llave1", ...}.
+
+    Falla al arrancar si esta mal formado: mejor no levantar que quedar abierta.
+    """
+    keys: dict[str, str] = {}
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        name, sep, key = (x.strip() for x in item.partition(":"))
+        if not sep or not name or not key:
+            raise ValueError(f"API_KEYS mal formado cerca de '{name}': usa proyecto:llave separados por coma.")
+        if len(key) < _MIN_KEY_LEN:
+            raise ValueError(f"La llave de '{name}' es muy corta (minimo {_MIN_KEY_LEN} caracteres).")
+        if name in keys:
+            raise ValueError(f"El proyecto '{name}' aparece dos veces en API_KEYS.")
+        if key in keys.values():
+            raise ValueError(f"La llave de '{name}' esta repetida en otro proyecto.")
+        keys[name] = key
+    return keys
+
+
+def _parse_list(raw: str) -> list[str]:
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
 class Settings(BaseModel):
     app_name: str = "Verificacion de identidad"
 
@@ -61,9 +91,17 @@ class Settings(BaseModel):
     photo_min_brightness: float = 50.0     # brillo medio de la cara (0-255)
     photo_max_brightness: float = 210.0
 
+    # ---------- Acceso ----------
+    # Una llave por proyecto que consume la API (header X-API-Key). Vacio =
+    # sin autenticacion, solo para desarrollo: al arrancar se advierte en el log.
+    api_keys: dict[str, str] = _parse_api_keys(os.getenv("API_KEYS", ""))
+    # Origenes de navegador permitidos, p. ej. "https://app1.com,https://app2.com".
+    # Solo hace falta si un frontend llama directo a la API; vacio = sin CORS.
+    cors_origins: list[str] = _parse_list(os.getenv("CORS_ORIGINS", ""))
+
     # ---------- Limites de uso ----------
-    # Por IP del cliente; detras de un proxy, uvicorn la toma de X-Forwarded-For
-    # (ver FORWARDED_ALLOW_IPS en el Dockerfile).
+    # Por proyecto (API key); sin llaves configuradas, por IP del cliente. Detras
+    # de un proxy, la IP sale de X-Forwarded-For (ver FORWARDED_ALLOW_IPS).
     # Se cuenta en memoria: vale con un solo worker de uvicorn.
     rate_limit_requests: int = int(os.getenv("RATE_LIMIT_REQUESTS", "10"))  # 0 = sin limite
     rate_limit_window_sec: int = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60"))
