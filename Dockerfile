@@ -54,10 +54,12 @@ RUN mkdir -p /app/models && cd /app/models && \
     echo "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4  face_detection_yunet_2023mar.onnx" | sha256sum -c - && \
     echo "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79  face_recognition_sface_2021dec.onnx" | sha256sum -c -
 
-# MediaPipe Face Landmarker (Apache 2.0) para la sincronia labios-voz.
+# MediaPipe Face y Hand Landmarker (Apache 2.0): sincronia labios-voz y gestos del reto.
 RUN cd /app/models && \
     $CURL -o face_landmarker.task https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task && \
-    echo "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff  face_landmarker.task" | sha256sum -c -
+    $CURL -o hand_landmarker.task https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task && \
+    echo "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff  face_landmarker.task" | sha256sum -c - && \
+    echo "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1  hand_landmarker.task" | sha256sum -c -
 
 # Copia tu código
 COPY app /app/app

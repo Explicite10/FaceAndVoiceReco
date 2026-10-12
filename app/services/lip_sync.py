@@ -1,83 +1,18 @@
 """Sincronia labios-voz: la boca debe moverse cuando suena la voz.
 
-Usa MediaPipe Face Landmarker (Apache 2.0) para medir la apertura de la boca
-cuadro por cuadro y la correlaciona con la energia del audio.
+Toma la apertura de la boca cuadro por cuadro (face_track.py, MediaPipe) y
+la correlaciona con la energia del audio.
 """
-import cv2
-import mediapipe as mp
 import numpy as np
 from faster_whisper.vad import VadOptions, get_speech_timestamps
-from mediapipe.tasks.python import BaseOptions, vision
 
 from app.core.config import settings
 from app.services.audio_extract import SAMPLE_RATE, AudioExtractionError, extract_audio_16k_mono
-from app.services.model_store import ensure_model
+from app.services.face_track import TRACK_FPS
 
-_LANDMARKER = (
-    "face_landmarker.task",
-    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-    "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
-)
-# Puntos de Face Mesh: centro de los labios internos y eje frente-barbilla.
-_UPPER_LIP, _LOWER_LIP, _FOREHEAD, _CHIN = 13, 14, 10, 152
-_TRACK_FPS = 15.0
 _ENVELOPE_WIN_SEC = 0.05
 # La boca suele moverse un poco antes que el sonido; se busca el mejor desfase.
 _MAX_LAG_SEC = 0.2
-
-
-def load_lip_sync_model() -> None:
-    ensure_model(*_LANDMARKER)
-
-
-def _mouth_track(video_path: str) -> tuple[np.ndarray, np.ndarray]:
-    """Tiempos (s) y apertura de boca / alto de cara por cuadro (NaN si no hay cara)."""
-    options = vision.FaceLandmarkerOptions(
-        # Solo CPU: en macOS el delegado por defecto intenta Metal y, fuera del hilo
-        # principal, aborta el proceso entero con un error nativo no capturable.
-        base_options=BaseOptions(model_asset_path=ensure_model(*_LANDMARKER), delegate=BaseOptions.Delegate.CPU),
-        running_mode=vision.RunningMode.VIDEO,
-        num_faces=1,
-    )
-    times: list[float] = []
-    apertures: list[float] = []
-    landmarker = vision.FaceLandmarker.create_from_options(options)
-    cap = cv2.VideoCapture(video_path)
-    last_t, last_ms = -1e9, -1
-    try:
-        while True:
-            ok, frame_bgr = cap.read()
-            if not ok:
-                break
-            t = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
-            if t - last_t < 1.0 / _TRACK_FPS - 1e-3:
-                continue
-            last_t = t
-            # El modo VIDEO exige marcas de tiempo estrictamente crecientes.
-            last_ms = max(int(t * 1000), last_ms + 1)
-
-            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-            result = landmarker.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), last_ms)
-
-            aperture = np.nan
-            if result.face_landmarks:
-                pts = result.face_landmarks[0]
-                h, w = rgb.shape[:2]
-
-                def px(i):
-                    return np.array([pts[i].x * w, pts[i].y * h])
-
-                face_h = float(np.linalg.norm(px(_FOREHEAD) - px(_CHIN)))
-                if face_h > 1.0:
-                    aperture = float(np.linalg.norm(px(_UPPER_LIP) - px(_LOWER_LIP))) / face_h
-
-            times.append(t)
-            apertures.append(aperture)
-    finally:
-        cap.release()
-        landmarker.close()
-
-    return np.array(times), np.array(apertures)
 
 
 def _envelope(audio: np.ndarray, times: np.ndarray) -> np.ndarray:
@@ -119,7 +54,7 @@ def _mean_motion(ap: np.ndarray, mask: np.ndarray) -> float | None:
     return float(diffs[sel].mean()) if sel.sum() >= 5 else None
 
 
-def analyze_lip_sync(video_path: str) -> dict:
+def analyze_lip_sync(video_path: str, track: dict) -> dict:
     result = {
         "passed": False,
         "reason": None,
@@ -137,7 +72,7 @@ def analyze_lip_sync(video_path: str) -> dict:
         result["reason"], result["reason_code"] = "el video no tiene audio", "no_audio"
         return result
 
-    times, ap = _mouth_track(video_path)
+    times, ap = track["times"], track["aperture"]
     if len(times) == 0:
         result["reason"], result["reason_code"] = "no se pudo leer el video", "unreadable_video"
         return result
@@ -147,13 +82,13 @@ def analyze_lip_sync(video_path: str) -> dict:
     speech = _speech_mask(audio, times)
     motion_speech = _mean_motion(ap, speech)
     motion_silence = _mean_motion(ap, ~speech)
-    corr, lag = _best_lag_correlation(ap, _envelope(audio, times), int(round(_MAX_LAG_SEC * _TRACK_FPS)))
+    corr, lag = _best_lag_correlation(ap, _envelope(audio, times), int(round(_MAX_LAG_SEC * TRACK_FPS)))
 
     result.update(
         mouth_motion_speech=None if motion_speech is None else round(motion_speech, 5),
         mouth_motion_silence=None if motion_silence is None else round(motion_silence, 5),
         correlation=round(corr, 3) if corr > -1.0 else None,
-        lag_ms=int(round(lag * 1000 / _TRACK_FPS)) if corr > -1.0 else None,
+        lag_ms=int(round(lag * 1000 / TRACK_FPS)) if corr > -1.0 else None,
     )
 
     if result["tracked_ratio"] < settings.lip_min_tracked_ratio:

@@ -39,13 +39,26 @@
       td:first-child { color: #666; width: 38%; }
       .warn { color: #b42318; font-size: 13px; }
       .rec { color: #b42318; font-weight: bold; }
+      .stage { position: relative; }
+      .stage video { display: block; width: 100%; }
+      /* Solo el preview en vivo va en espejo; los cuadros grabados no. */
+      video.mirror { transform: scaleX(-1); }
+      .prompt { position: absolute; left: 0; right: 0; bottom: 12px; margin: 0 12px; padding: 10px 14px;
+                border-radius: 10px; background: rgba(0,0,0,.65); color: #fff; font-size: 20px;
+                font-weight: bold; text-align: center; }
+      .steps { padding-left: 22px; font-size: 15px; }
+      .steps li { padding: 3px 0; color: #666; }
+      .steps li.current { color: #1f4fd1; font-weight: bold; }
+      .steps li.done { color: #1a7f37; }
+      .steps li.done::after { content: " ✓"; }
     </style>
   </head>
-  <body data-min="{{ min_duration_sec }}" data-max="{{ max_duration_sec }}">
+  <body data-min="{{ min_duration_sec }}" data-max="{{ max_duration_sec }}"
+        data-turn="{{ turn_offset }}" data-blink-closed="{{ blink_closed }}" data-blink-open="{{ blink_open }}">
     <h2>Verificacion de identidad</h2>
     <p class="muted">
-      Compara el rostro del video contra la identificacion y verifica la frase hablada
-      en el mismo video (<code>POST /api/verify-identity</code>).
+      Compara el rostro del video contra la identificacion, revisa los gestos del reto y verifica
+      la frase hablada en el mismo video (<code>POST /api/challenge</code> y <code>POST /api/verify-identity</code>).
     </p>
     <p class="muted">
       API key (si el servidor tiene <code>API_KEYS</code>):
@@ -58,16 +71,23 @@
         <input type="file" id="idFile" accept="image/*" />
         <div id="idPrevBox" style="margin-top:8px"></div>
 
-        <h3>2) Graba el video leyendo esta frase</h3>
-        <div class="phrase" id="phrase">{{ expected_phrase }}</div>
-        <p class="muted">Duracion valida: {{ min_duration_sec }}s a {{ max_duration_sec }}s. Mira a la camara mientras hablas.</p>
+        <h3>2) Graba el video siguiendo el reto</h3>
+        <p class="muted">Al iniciar se pide un reto nuevo: primero haz los gestos uno por uno y despues lee
+          la frase en voz alta. Mira a la camara. Maximo {{ max_duration_sec }}s.</p>
 
-        <video id="preview" autoplay muted playsinline></video>
+        <div class="stage">
+          <video id="preview" class="mirror" autoplay muted playsinline></video>
+          <div class="prompt" id="prompt" hidden></div>
+        </div>
+        <ol class="steps" id="steps"></ol>
+        <div class="phrase" id="phrase" hidden></div>
         <div class="timer" id="timer">00.0 s</div>
 
-        <button id="btnRec">Grabar</button>
-        <button id="btnStop" disabled>Detener</button>
-        <p class="muted" style="margin:10px 0 4px">o sube un video ya grabado:</p>
+        <button id="btnRec">Iniciar reto y grabar</button>
+        <button id="btnStop" disabled>Terminar</button>
+        <p class="muted" id="mpStatus">Cargando detector de gestos...</p>
+        <p class="muted" style="margin:10px 0 4px">o sube un video ya grabado (sin reto solo funciona con
+          <code>REQUIRE_CHALLENGE=false</code>):</p>
         <input type="file" id="videoFile" accept="video/*" />
         <p class="warn" id="warn"></p>
 
@@ -92,9 +112,126 @@
 
       let stream, recorder, chunks = [], tick, t0;
       let videoBlob = null, videoMime = "", idFile = null;
+      // Reto vigente: se manda con el video y el servidor lo invalida al usarlo.
+      let challenge = null;
       const minDur = Number(document.body.dataset.min);
       const maxDur = Number(document.body.dataset.max);
 
+      // ---------------- Detector de gestos en el navegador (MediaPipe) ----------------
+      // Solo guia al usuario: el servidor vuelve a revisar los gestos en el video.
+      // Mismos puntos y umbrales que app/services/face_track.py y gestures.py. Los
+      // cuadros llegan sin espejo (el espejo del preview es solo CSS), igual que al
+      // servidor: la izquierda del usuario queda a la derecha de la imagen.
+      const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35";
+      const MODELS = "https://storage.googleapis.com/mediapipe-models";
+      const TH = {
+        turn: Number(document.body.dataset.turn),
+        closed: Number(document.body.dataset.blinkClosed),
+        open: Number(document.body.dataset.blinkOpen),
+        turnFrames: 3, handFrames: 3,
+      };
+      let faceLm = null, handLm = null;
+
+      async function createTask(Task, fileset, model, opts) {
+        // GPU si el navegador lo soporta; si no, CPU.
+        for (const delegate of ["GPU", "CPU"]) {
+          try {
+            return await Task.createFromOptions(fileset, {
+              baseOptions: { modelAssetPath: model, delegate }, runningMode: "VIDEO", ...opts,
+            });
+          } catch (e) { if (delegate === "CPU") throw e; }
+        }
+      }
+
+      async function loadDetector() {
+        try {
+          const v = await import(`${MP}/vision_bundle.mjs`);
+          const fileset = await v.FilesetResolver.forVisionTasks(`${MP}/wasm`);
+          faceLm = await createTask(v.FaceLandmarker, fileset,
+            `${MODELS}/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
+            { numFaces: 1, outputFaceBlendshapes: true });
+          handLm = await createTask(v.HandLandmarker, fileset,
+            `${MODELS}/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            { numHands: 2 });
+          $("mpStatus").textContent = "Detector de gestos listo.";
+        } catch (e) {
+          faceLm = handLm = null;
+          $("mpStatus").textContent = "No se pudo cargar el detector de gestos (" + e.message +
+            "). Puedes grabar igual: haz los gestos en orden; el servidor los revisa.";
+        }
+      }
+
+      function faceInfo(res) {
+        if (!res.faceLandmarks || !res.faceLandmarks.length) return null;
+        const p = res.faceLandmarks[0];
+        const a = p[234].x, b = p[454].x, w = Math.abs(b - a);
+        const bs = {};
+        (res.faceBlendshapes?.[0]?.categories || []).forEach((c) => { bs[c.categoryName] = c.score; });
+        return {
+          turn: w > 1e-3 ? (p[1].x - (a + b) / 2) / w : null,
+          blink: ((bs.eyeBlinkLeft ?? 0) + (bs.eyeBlinkRight ?? 0)) / 2,
+          noseX: p[1].x, chinY: p[152].y,
+        };
+      }
+
+      // Estado del paso actual; se reinicia al pasar al siguiente.
+      let step = 0, run = 0, seenOpen = false, closed = false, lastFace = null, lastTs = 0, loopOn = false;
+
+      function stepDone(gesture, f, hands) {
+        if (gesture === "turn_left" || gesture === "turn_right") {
+          const ok = f && f.turn != null && (gesture === "turn_left" ? f.turn > TH.turn : f.turn < -TH.turn);
+          run = ok ? run + 1 : 0;
+          return run >= TH.turnFrames;
+        }
+        if (gesture === "blink") {
+          if (!f) return false;
+          if (f.blink <= TH.open) { if (closed) return true; seenOpen = true; }
+          else if (f.blink >= TH.closed && seenOpen) closed = true;
+          return false;
+        }
+        // Alzar mano: palma arriba de la barbilla, del lado pedido de la nariz.
+        if (!lastFace) return false;
+        const left = gesture === "raise_left_hand";
+        const ok = (hands || []).some((h) =>
+          (left ? h[9].x > lastFace.noseX : h[9].x < lastFace.noseX) && h[9].y < lastFace.chinY);
+        run = ok ? run + 1 : 0;
+        return run >= TH.handFrames;
+      }
+
+      function showStep() {
+        const gs = challenge.gestures;
+        [...$("steps").children].forEach((li, i) => {
+          li.className = i < step ? "done" : i === step ? "current" : "";
+        });
+        if (step < gs.length) {
+          $("prompt").textContent = gs[step].instruction;
+        } else {
+          $("prompt").textContent = "Ahora lee la frase en voz alta";
+          $("phrase").hidden = false;
+        }
+      }
+
+      function loop() {
+        if (!loopOn) return;
+        const v = $("preview");
+        const now = performance.now();
+        // ~15 cuadros por segundo, como el servidor.
+        if (now - lastTs >= 66 && v.readyState >= 2 && step < challenge.gestures.length) {
+          lastTs = now;
+          const gesture = challenge.gestures[step].gesture;
+          const f = faceInfo(faceLm.detectForVideo(v, now));
+          if (f) lastFace = f;
+          // El modelo de manos solo corre en su paso: es el mas pesado.
+          const hands = gesture.startsWith("raise_") ? handLm.detectForVideo(v, now).landmarks : null;
+          if (stepDone(gesture, f, hands)) {
+            step += 1; run = 0; seenOpen = false; closed = false;
+            showStep();
+          }
+        }
+        requestAnimationFrame(loop);
+      }
+
+      // ---------------- Grabacion ----------------
       function pickMime() {
         const opts = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
         return opts.find((o) => MediaRecorder.isTypeSupported(o)) || "";
@@ -109,6 +246,7 @@
       }
 
       async function init() {
+        loadDetector();
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: { width: 640, height: 480 },
@@ -126,6 +264,13 @@
       function showVideo(src) {
         const v = $("preview");
         v.srcObject = null; v.src = src; v.muted = false; v.controls = true;
+        v.classList.remove("mirror");
+      }
+
+      function showLive() {
+        const v = $("preview");
+        v.src = ""; v.controls = false; v.muted = true; v.srcObject = stream;
+        v.classList.add("mirror");
       }
 
       $("idFile").onchange = (e) => {
@@ -135,17 +280,47 @@
         refreshSend();
       };
 
-      $("btnRec").onclick = () => {
+      async function fetchChallenge() {
+        const res = await fetch("api/challenge", { method: "POST", headers: authHeaders() });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+        return body;
+      }
+
+      $("btnRec").onclick = async () => {
+        $("btnRec").disabled = true;
         chunks = []; videoBlob = null; refreshSend();
         $("warn").textContent = "";
-        if (stream) { const v = $("preview"); v.src = ""; v.controls = false; v.muted = true; v.srcObject = stream; }
+        try {
+          challenge = await fetchChallenge();
+        } catch (e) {
+          $("warn").textContent = "No se pudo pedir el reto: " + e.message;
+          $("btnRec").disabled = false;
+          return;
+        }
+
+        $("steps").innerHTML = challenge.gestures.map((g) => `<li>${esc(g.instruction)}</li>`).join("");
+        $("phrase").textContent = challenge.phrase;
+        $("prompt").hidden = false;
+        step = 0; run = 0; seenOpen = false; closed = false; lastFace = null;
+        if (faceLm) {
+          $("phrase").hidden = true;
+          showStep();
+        } else {
+          // Sin detector no hay guia paso a paso: se muestra todo de una vez.
+          $("phrase").hidden = false;
+          $("prompt").textContent = "Haz los gestos en orden y despues lee la frase";
+        }
+
+        showLive();
         videoMime = pickMime();
         recorder = new MediaRecorder(stream, videoMime ? { mimeType: videoMime } : undefined);
         recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
         recorder.onstop = onStop;
         recorder.start();
         t0 = Date.now();
-        $("btnRec").disabled = true; $("btnStop").disabled = false;
+        $("btnStop").disabled = false;
+        if (faceLm) { loopOn = true; requestAnimationFrame(loop); }
         tick = setInterval(() => {
           const s = (Date.now() - t0) / 1000;
           $("timer").innerHTML = '<span class="rec">REC</span> ' + fmt(s);
@@ -156,6 +331,8 @@
       $("btnStop").onclick = () => {
         if (recorder && recorder.state !== "inactive") recorder.stop();
         clearInterval(tick);
+        loopOn = false;
+        $("prompt").hidden = true;
         $("btnStop").disabled = true; $("btnRec").disabled = false;
       };
 
@@ -164,9 +341,10 @@
         $("timer").textContent = fmt(secs);
         videoBlob = new Blob(chunks, { type: videoMime || "video/webm" });
         showVideo(URL.createObjectURL(videoBlob));
-        if (secs < minDur) {
-          $("warn").textContent = `Grabaste ${secs.toFixed(1)}s y el minimo es ${minDur}s: la voz saldra invalid_audio.`;
-        }
+        const warns = [];
+        if (secs < minDur) warns.push(`Grabaste ${secs.toFixed(1)}s y el minimo es ${minDur}s: la voz saldra invalid_audio.`);
+        if (faceLm && step < challenge.gestures.length) warns.push("No se completaron todos los gestos: el servidor lo rechazara.");
+        $("warn").textContent = warns.join(" ");
         refreshSend();
       }
 
@@ -175,25 +353,33 @@
         if (!f) return;
         videoBlob = f; videoMime = f.type;
         showVideo(URL.createObjectURL(f));
-        $("warn").textContent = "";
+        $("warn").textContent = challenge ? "" : "Sin reto: el servidor lo rechaza salvo con REQUIRE_CHALLENGE=false.";
         refreshSend();
       };
 
       $("btnSend").onclick = async () => {
         $("btnSend").disabled = true;
-        $("result").innerHTML = '<p class="muted">Analizando voz y rostro...</p>';
+        $("result").innerHTML = '<p class="muted">Analizando voz, rostro y gestos...</p>';
 
         const ext = (videoMime || "").includes("mp4") ? "mp4" : "webm";
         const fd = new FormData();
         fd.append("id_image", idFile, idFile.name);
         fd.append("video", videoBlob, videoBlob.name || `grabacion.${ext}`);
+        if (challenge) fd.append("challenge_id", challenge.challenge_id);
         if ($("thr").value) fd.append("match_threshold_percent", $("thr").value);
 
         try {
-          const res = await fetch("/api/verify-identity", { method: "POST", body: fd, headers: authHeaders() });
+          const res = await fetch("api/verify-identity", { method: "POST", body: fd, headers: authHeaders() });
           render(res.status, await res.json());
         } catch (e) {
           $("result").innerHTML = `<span class="badge b-error">error</span><pre>${esc(e.message)}</pre>`;
+        }
+        // El reto ya se gasto: para reintentar hay que grabar con uno nuevo.
+        if (challenge) {
+          challenge = null; videoBlob = null;
+          $("sendHint").textContent = "El reto ya se uso: graba de nuevo para otro intento.";
+          $("btnSend").disabled = true;
+          return;
         }
         refreshSend();
       };
@@ -232,6 +418,7 @@
         return html + `
           <div class="big">${v.phrase_match.match_percent.toFixed(2)}%</div>
           <table>
+            <tr><td>Frase pedida</td><td>${esc(v.expected_phrase)}</td></tr>
             <tr><td>Se escucho</td><td><b>${esc(v.transcript) || "(nada)"}</b></td></tr>
             <tr><td>Palabras faltantes</td><td>${words(v.phrase_match.missing_words)}</td></tr>
             <tr><td>Palabras sobrantes</td><td>${words(v.phrase_match.extra_words)}</td></tr>
@@ -252,6 +439,23 @@
           </table>`;
       }
 
+      const GESTURE = {
+        turn_left: "Girar a la izquierda", turn_right: "Girar a la derecha", blink: "Parpadear",
+        raise_left_hand: "Alzar mano izquierda", raise_right_hand: "Alzar mano derecha",
+      };
+
+      function renderChallenge(checks, c) {
+        let html = renderChecks(checks);
+        if (!c) return html;
+        const rows = c.gestures.map((g, i) => `<tr><td>${i + 1}. ${GESTURE[g.gesture]}</td>
+          <td><span class="${g.detected ? "ok" : "bad"}">${g.detected ? `✓ segundo ${g.time_sec}` : "✗ no detectado"}</span></td></tr>`).join("");
+        const m = c.measurements;
+        return html + `<table>${rows}
+          ${m ? `<tr><td>Medido</td><td class="muted">giro max izq ${m.max_turn_left ?? "-"} / der ${m.max_turn_right ?? "-"}
+            (umbral ${m.turn_threshold}) · parpadeo max ${pct(m.max_blink_probability)}</td></tr>` : ""}
+          </table>`;
+      }
+
       function render(status, d) {
         if (status !== 200) {
           $("result").innerHTML = `<span class="badge b-error">HTTP ${status}</span><pre>${esc(JSON.stringify(d, null, 2))}</pre>`;
@@ -267,6 +471,7 @@
             <p style="margin:8px 0 0">${esc(r.summary)}</p>${failed}
           </div>
           <div class="section"><h3>Rostro (video vs identificacion)</h3>${renderFace(d.checks.face, d.details.face)}</div>
+          <div class="section"><h3>Gestos del reto</h3>${renderChallenge(d.checks.challenge, d.details.challenge)}</div>
           <div class="section"><h3>Voz (frase)</h3>${renderVoice(d.checks.voice, d.details.voice)}</div>
           <div class="section"><h3>Prueba de vida</h3>${renderLiveness(d.checks.liveness, d.details.liveness)}</div>
           <details style="margin-top:12px">
@@ -379,7 +584,7 @@
         if ($("pThr").value) fd.append("match_threshold_percent", $("pThr").value);
 
         try {
-          const res = await fetch("/api/verify-photo", { method: "POST", body: fd, headers: authHeaders() });
+          const res = await fetch("api/verify-photo", { method: "POST", body: fd, headers: authHeaders() });
           pRender(res.status, await res.json());
         } catch (e) {
           $("pResult").innerHTML = `<span class="badge b-error">error</span><pre>${esc(e.message)}</pre>`;

@@ -58,3 +58,6 @@ class RateLimiter:
 
 # Un solo presupuesto para ambos endpoints: los dos consumen el mismo CPU.
 verification_limiter = RateLimiter(settings.rate_limit_requests, settings.rate_limit_window_sec)
+
+# Pedir un reto es barato, pero cada uno ocupa memoria hasta que vence.
+challenge_limiter = RateLimiter(settings.challenge_rate_limit_requests, settings.rate_limit_window_sec)

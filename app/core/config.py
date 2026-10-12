@@ -51,8 +51,8 @@ class Settings(BaseModel):
     face_match_percent: float = float(os.getenv("FACE_MATCH_PERCENT", "70"))
 
     # ---------- Audio / voice liveness ----------
-    # Frase temporal hardcodeada. El endpoint acepta override por request para
-    # migrar a challenge-response (frase aleatoria por sesion) sin tocar codigo.
+    # Frase fija, solo cuando REQUIRE_CHALLENGE=false y la solicitud no trae
+    # challenge_id. Con reto, la frase la genera el servidor (ver challenge.py).
     expected_phrase: str = os.getenv("EXPECTED_PHRASE") or "yo confirmo mi identidad y autorizo la verificacion de mi cuenta el dia de hoy"
 
     # Perillas de despliegue: cambian por entorno sin tocar codigo.
@@ -64,9 +64,10 @@ class Settings(BaseModel):
     asr_beam_size: int = 5
     asr_max_concurrency: int = int(os.getenv("ASR_MAX_CONCURRENCY", "1"))  # = cores / asr_cpu_threads
 
-    # Gates de audio (antes y despues del ASR)
+    # Gates de audio (antes y despues del ASR). El maximo cubre los gestos del
+    # reto (~10 s) mas la lectura de la frase.
     audio_min_duration_sec: float = 4.0
-    audio_max_duration_sec: float = 20.0
+    audio_max_duration_sec: float = 30.0
     min_speech_duration_sec: float = 2.5
     min_speech_ratio: float = 0.15
 
@@ -86,6 +87,24 @@ class Settings(BaseModel):
     lip_min_tracked_ratio: float = 0.6     # cara visible en al menos este % de cuadros
     lip_motion_min: float = 0.004          # movimiento medio de la boca al hablar
     lip_corr_min: float = 0.2              # correlacion boca vs. energia de la voz
+
+    # ---------- Reto (challenge-response) ----------
+    # El servidor genera frase y gestos aleatorios de un solo uso; el cliente
+    # solo devuelve el challenge_id. Sin reto se usa la frase fija (EXPECTED_PHRASE)
+    # y no se piden gestos: solo para desarrollo o migracion.
+    require_challenge: bool = os.getenv("REQUIRE_CHALLENGE", "true").lower() not in ("0", "false", "no")
+    challenge_ttl_sec: int = int(os.getenv("CHALLENGE_TTL_SEC", "180"))
+    challenge_max_pending: int = 10_000    # tope de retos vivos en memoria
+    challenge_rate_limit_requests: int = int(os.getenv("CHALLENGE_RATE_LIMIT_REQUESTS", "30"))
+    # Deteccion de gestos (MediaPipe). Valores PROVISIONALES: calibrar con
+    # videos reales. El navegador usa los mismos para guiar al usuario.
+    # Giro: desplazamiento de la nariz respecto al centro de la cara, como
+    # fraccion del ancho de la cara (0 = de frente; ~0.12 son unos 20 grados).
+    gesture_turn_offset: float = 0.12
+    gesture_turn_min_frames: int = 3       # cuadros seguidos a 15 fps (~0.2 s)
+    gesture_blink_closed: float = 0.5      # blendshape eyeBlink promedio: ojos cerrados
+    gesture_blink_open: float = 0.3        # ... y abiertos antes y despues
+    gesture_hand_min_frames: int = 2       # cuadros seguidos con la mano arriba (~7.5 fps)
 
     # ---------- Foto contra identificacion ----------
     # Calidad minima de la cara en la foto. Valores PROVISIONALES: calibrar con

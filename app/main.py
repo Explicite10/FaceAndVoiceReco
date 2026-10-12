@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.services.antispoof import load_antispoof_models
 from app.services.asr_engine import load_model
 from app.services.face_engine import load_face_models
-from app.services.lip_sync import load_lip_sync_model
+from app.services.face_track import load_track_models
 
 templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger("uvicorn.error")
@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
     load_model()
     load_face_models()
     load_antispoof_models()
-    load_lip_sync_model()
+    load_track_models()
     if settings.api_keys:
         logger.info("Acceso: API keys de %s", ", ".join(sorted(settings.api_keys)))
     else:
@@ -56,9 +56,11 @@ def home(request: Request):
         "index.html",
         {
             "request": request,
-            "expected_phrase": settings.expected_phrase,
             "min_duration_sec": settings.audio_min_duration_sec,
             "max_duration_sec": settings.audio_max_duration_sec,
+            "turn_offset": settings.gesture_turn_offset,
+            "blink_closed": settings.gesture_blink_closed,
+            "blink_open": settings.gesture_blink_open,
         },
     )
 

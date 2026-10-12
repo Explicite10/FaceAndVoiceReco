@@ -263,27 +263,91 @@ def _liveness_details(liveness: dict) -> dict | None:
     }
 
 
+# --------------------------------------------------------------------- reto
+_GESTURE_CHECK = {
+    "turn_left": ("head_turn", "girar la cabeza a la izquierda"),
+    "turn_right": ("head_turn", "girar la cabeza a la derecha"),
+    "blink": ("blink", "parpadear"),
+    "raise_left_hand": ("hand_raise", "alzar la mano izquierda"),
+    "raise_right_hand": ("hand_raise", "alzar la mano derecha"),
+}
+
+
+def _challenge_checks(challenge: dict | None, gestures: dict | None) -> dict:
+    if challenge is None:
+        return {"challenge_used": _skipped("la solicitud no usó un reto (challenge_id)")}
+
+    names = [_GESTURE_CHECK[g][0] for g in challenge["gestures"]] + ["gesture_order"]
+    if not gestures["ok"]:
+        return {k: _skipped(gestures["error"].rstrip(".").lower()) for k in names}
+
+    r = gestures["result"]
+    checks = {}
+    for step in r["steps"]:
+        key, label = _GESTURE_CHECK[step["gesture"]]
+        checks[key] = (
+            _passed(f"Se detectó el gesto: {label} (segundo {step['time_sec']}).")
+            if step["detected"] else
+            _failed(f"{key}_not_detected", f"No se detectó el gesto: {label}.")
+        )
+    if not all(s["detected"] for s in r["steps"]):
+        checks["gesture_order"] = _skipped("faltó al menos un gesto")
+    else:
+        checks["gesture_order"] = (
+            _passed("Los gestos se hicieron en el orden pedido.")
+            if r["in_order"] else
+            _failed("gesture_order_mismatch", "Los gestos no se hicieron en el orden pedido.")
+        )
+    return checks
+
+
+def _challenge_details(challenge: dict | None, gestures: dict | None) -> dict | None:
+    if challenge is None:
+        return None
+    r = gestures["result"] if gestures["ok"] else None
+    return {
+        "challenge_id": challenge["challenge_id"],
+        "phrase": challenge["phrase"],
+        "gestures": r["steps"] if r else [
+            {"gesture": g, "detected": False, "time_sec": None} for g in challenge["gestures"]
+        ],
+        "in_order": r["in_order"] if r else False,
+        "measurements": {
+            "frames_analyzed": r["frames"],
+            "max_turn_left": r["max_turn_left"],
+            "max_turn_right": r["max_turn_right"],
+            "max_blink_probability": r["max_blink"],
+            "turn_threshold": settings.gesture_turn_offset,
+            "blink_threshold_probability": settings.gesture_blink_closed,
+        } if r else None,
+    }
+
+
 # ---------------------------------------------------------------- respuesta
 def build_report(
-    *, face: dict, voice: dict, liveness: dict, elapsed_ms: int
+    *, face: dict, voice: dict, liveness: dict, challenge: dict | None, gestures: dict | None, elapsed_ms: int
 ) -> dict:
     checks = {
         "face": _face_checks(face),
         "voice": _voice_checks(voice),
         "liveness": _liveness_checks(liveness),
+        "challenge": _challenge_checks(challenge, gestures),
     }
     failed = [
         (f"{group}.{name}", c) for group, items in checks.items() for name, c in items.items() if c["status"] == "failed"
     ]
+    parts = (("face", face), ("voice", voice), ("liveness", liveness), ("challenge", gestures))
     errors = [
         {"component": name, "code": part["error_code"], "message": part["error"], "http_status": part["status_code"]}
-        for name, part in (("face", face), ("voice", voice), ("liveness", liveness))
-        if not part["ok"]
+        for name, part in parts
+        if part is not None and not part["ok"]
     ]
     approved = not failed and not errors
 
     if approved:
         summary = "Aprobado: el rostro coincide con la identificación, la frase es correcta y pasó la prueba de vida."
+        if challenge is not None:
+            summary = summary[:-1] + " con los gestos pedidos."
     else:
         problems = [c["message"].rstrip(".") for _, c in failed]
         failed_codes = {c["code"] for _, c in failed}
@@ -305,6 +369,7 @@ def build_report(
             "face": _face_details(face),
             "voice": _voice_details(voice),
             "liveness": _liveness_details(liveness),
+            "challenge": _challenge_details(challenge, gestures),
         },
         "errors": errors,
         "meta": {
@@ -313,6 +378,7 @@ def build_report(
                 "speech_to_text": f"faster-whisper {settings.asr_model_size} ({settings.asr_device}/{settings.asr_compute_type})",
                 **_FACE_MODELS,
                 "face_landmarks": "MediaPipe Face Landmarker v1",
+                "hand_landmarks": "MediaPipe Hand Landmarker v1",
             },
         },
     }

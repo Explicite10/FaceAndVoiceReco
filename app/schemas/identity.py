@@ -22,6 +22,7 @@ class Checks(BaseModel):
     face: Dict[str, Check]
     voice: Dict[str, Check]
     liveness: Dict[str, Check]
+    challenge: Dict[str, Check] = Field(description="Gestos del reto: head_turn, blink, hand_raise y gesture_order.")
 
 
 # ----- detalle
@@ -103,14 +104,41 @@ class LivenessDetails(BaseModel):
     lip_sync: LipSync
 
 
+GestureName = Literal["turn_left", "turn_right", "blink", "raise_left_hand", "raise_right_hand"]
+
+
+class GestureResult(BaseModel):
+    gesture: GestureName
+    detected: bool
+    time_sec: Optional[float] = Field(None, description="Primera vez que se detecto el gesto.")
+
+
+class GestureMeasurements(BaseModel):
+    frames_analyzed: int
+    max_turn_left: Optional[float] = Field(None, description="Giro maximo: desplazamiento de la nariz / ancho de la cara.")
+    max_turn_right: Optional[float] = None
+    max_blink_probability: Optional[float] = None
+    turn_threshold: float
+    blink_threshold_probability: float
+
+
+class ChallengeDetails(BaseModel):
+    challenge_id: str
+    phrase: str
+    gestures: List[GestureResult]
+    in_order: bool
+    measurements: Optional[GestureMeasurements] = None
+
+
 class Details(BaseModel):
     face: Optional[FaceDetails] = None
     voice: Optional[VoiceDetails] = None
     liveness: Optional[LivenessDetails] = None
+    challenge: Optional[ChallengeDetails] = None
 
 
 class ErrorItem(BaseModel):
-    component: Literal["face", "voice", "liveness"]
+    component: Literal["face", "voice", "liveness", "challenge"]
     code: Optional[str] = None
     message: str
     http_status: int
@@ -119,6 +147,18 @@ class ErrorItem(BaseModel):
 class Meta(BaseModel):
     api_version: str
     models: Dict[str, str]
+
+
+class ChallengeStep(BaseModel):
+    gesture: GestureName
+    instruction: str = Field(description="Texto para mostrar al usuario. Izquierda/derecha son las del usuario.")
+
+
+class ChallengeResponse(BaseModel):
+    challenge_id: str = Field(description="Se manda en /api/verify-identity. Sirve una sola vez.")
+    phrase: str = Field(description="Frase que el usuario lee en voz alta despues de los gestos.")
+    gestures: List[ChallengeStep] = Field(description="Gestos a hacer, en este orden, antes de leer la frase.")
+    expires_in_sec: int
 
 
 class VerifyIdentityResponse(BaseModel):
