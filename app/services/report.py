@@ -66,7 +66,8 @@ def _face_checks(face: dict) -> dict:
             _failed(
                 "face_mismatch",
                 "La cara no coincide con la identificación en "
-                + ", ".join(f"el tramo {s['index']} ({s['similarity_percent']}%)" for s in mismatched) + ".",
+                + ", ".join(f"el tramo {s['index']} ({s['similarity_percent']}%)" for s in mismatched)
+                + f"; mínimo {r['threshold_percent']:g}%.",
             )
             if mismatched else
             _passed(f"La cara coincide con la identificación en {n - len(missing)} de {n} tramos.")
@@ -94,6 +95,7 @@ def _face_details(face: dict) -> dict | None:
             "average_percent": r["similarity_percent"],
             "min_score": r["min_similarity"],
             "threshold_score": r["tolerance"],
+            "threshold_percent": r["threshold_percent"],
         },
         "segments": [
             {
@@ -263,7 +265,7 @@ def _liveness_details(liveness: dict) -> dict | None:
 
 # ---------------------------------------------------------------- respuesta
 def build_report(
-    *, face: dict, voice: dict, liveness: dict, elapsed_ms: int, include_images: bool
+    *, face: dict, voice: dict, liveness: dict, elapsed_ms: int
 ) -> dict:
     checks = {
         "face": _face_checks(face),
@@ -288,14 +290,6 @@ def build_report(
         problems += [e["message"].rstrip(".") for e in errors if e["code"] not in failed_codes and e["component"] != "liveness"]
         summary = "Rechazado: " + "; ".join(x[:1].lower() + x[1:] for x in problems) + "."
 
-    artifacts = None
-    if include_images and face["ok"]:
-        r = face["result"]
-        artifacts = {
-            "id_face_image": r["image1_face_data_uri"],
-            "segment_face_images": [s["face_data_uri"] for s in r["segments"]],
-        }
-
     return {
         "request_id": uuid.uuid4().hex,
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -313,7 +307,6 @@ def build_report(
             "liveness": _liveness_details(liveness),
         },
         "errors": errors,
-        "artifacts": artifacts,
         "meta": {
             "api_version": API_VERSION,
             "models": {
@@ -356,10 +349,13 @@ def _photo_checks(a: dict) -> dict:
     pct = a["similarity_percent"]
     if id_face is None:
         checks["face"]["face_match"] = _skipped("no se detectó rostro en la identificación")
-    elif a["similarity"] >= settings.sim_threshold:
+    elif a["is_match"]:
         checks["face"]["face_match"] = _passed(f"La cara coincide con la identificación ({pct}%).")
     else:
-        checks["face"]["face_match"] = _failed("face_mismatch", f"La cara no coincide con la identificación ({pct}%).")
+        checks["face"]["face_match"] = _failed(
+            "face_mismatch",
+            f"La cara no coincide con la identificación ({pct}%; mínimo {a['threshold_percent']:g}%).",
+        )
 
     q = photo_face["quality"]
     lo, hi = settings.photo_min_brightness, settings.photo_max_brightness
@@ -398,7 +394,7 @@ def _photo_checks(a: dict) -> dict:
     return checks
 
 
-def build_photo_report(analysis: dict, *, elapsed_ms: int, include_images: bool) -> dict:
+def build_photo_report(analysis: dict, *, elapsed_ms: int) -> dict:
     a = analysis
     checks = _photo_checks(a)
     failed = [
@@ -427,7 +423,8 @@ def build_photo_report(analysis: dict, *, elapsed_ms: int, include_images: bool)
             "similarity": None if a["similarity"] is None else {
                 "score": a["similarity"],
                 "percent": a["similarity_percent"],
-                "threshold_score": settings.sim_threshold,
+                "threshold_score": a["threshold_score"],
+                "threshold_percent": a["threshold_percent"],
             },
             "faces_in_photo": a["faces_in_photo"],
             "id_face_quality": id_face["quality"] if id_face else None,
@@ -437,9 +434,5 @@ def build_photo_report(analysis: dict, *, elapsed_ms: int, include_images: bool)
                 "threshold_probability": settings.antispoof_threshold,
             },
         },
-        "artifacts": {
-            "id_face_image": id_face["data_uri"] if id_face else None,
-            "photo_face_image": photo_face["data_uri"] if photo_face else None,
-        } if include_images else None,
         "meta": {"api_version": API_VERSION, "models": dict(_FACE_MODELS)},
     }

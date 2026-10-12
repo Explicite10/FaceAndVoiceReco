@@ -21,14 +21,19 @@ async def verify_identity_endpoint(
     id_image: UploadFile = File(...),
     video: UploadFile = File(...),
     expected_phrase: Optional[str] = Form(None),
-    include_images: bool = Form(False),
+    match_threshold_percent: Optional[float] = Form(
+        None,
+        ge=1,
+        le=100,
+        description="Porcentaje minimo de similitud facial para aprobar. Si se omite: 70.",
+    ),
 ):
     """Rostro del video vs identificacion + frase hablada en el mismo video.
 
     `result.approved` solo es true si ninguna validacion de `checks` fallo.
-    `include_images=true` agrega los recortes de cara en base64 (pesan ~70 KB).
+    `match_threshold_percent` fija el % minimo de similitud en cada tramo (default 70).
     """
-    return await verify_identity(id_image, video, expected_phrase, include_images)
+    return await verify_identity(id_image, video, expected_phrase, match_threshold_percent)
 
 
 @router.post(
@@ -39,11 +44,16 @@ async def verify_identity_endpoint(
 async def verify_photo_endpoint(
     id_image: UploadFile = File(...),
     photo: UploadFile = File(...),
-    include_images: bool = Form(False),
+    match_threshold_percent: Optional[float] = Form(
+        None,
+        ge=1,
+        le=100,
+        description="Porcentaje minimo de similitud facial para aprobar. Si se omite: 70.",
+    ),
 ):
     """Rostro de una foto vs identificacion, con validaciones de calidad y anti-spoofing de la foto.
 
     `result.approved` solo es true si ninguna validacion de `checks` fallo.
-    `include_images=true` agrega los recortes de cara en base64.
+    `match_threshold_percent` fija el % minimo de similitud (default 70).
     """
-    return await verify_photo(id_image, photo, include_images)
+    return await verify_photo(id_image, photo, match_threshold_percent)

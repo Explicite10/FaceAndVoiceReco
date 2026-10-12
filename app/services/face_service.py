@@ -1,6 +1,5 @@
 # app/services/face_service.py
 from io import BytesIO
-import base64
 import numpy as np
 from PIL import Image, ImageOps
 from fastapi import HTTPException, UploadFile
@@ -11,7 +10,7 @@ from app.core.config import settings
 from app.services.errors import CheckError
 from app.services.upload_io import read_upload_limited
 from app.services.face_engine import (
-    cosine_similarity, detect_faces, embed, pick_best_face, to_bbox_dict
+    cosine_similarity, detect_faces, embed, pick_best_face
 )
 from app.services.video_face import best_faces_by_segment
 
@@ -58,26 +57,6 @@ async def read_as_np_rgb(upload: UploadFile, field_name: str) -> np.ndarray:
         raise HTTPException(status_code=400, detail=f"No pude leer '{field_name}'. ¿Archivo dañado?")
 
 
-def crop_face(np_rgb: np.ndarray, bbox: dict):
-    pil_img = Image.fromarray(np_rgb)  # RGB
-    width, height = pil_img.size
-    top, right, bottom, left = bbox["top"], bbox["right"], bbox["bottom"], bbox["left"]
-
-    top = max(0, top)
-    left = max(0, left)
-    bottom = min(height, bottom)
-    right = min(width, right)
-
-    return pil_img.crop((left, top, right, bottom))
-
-
-def img_to_base64_jpeg(pil_img: Image.Image, quality: int = 95):
-    buf = BytesIO()
-    pil_img.save(buf, format="JPEG", quality=quality)
-    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return b64, f"data:image/jpeg;base64,{b64}"
-
-
 def similarity_to_percent_sigmoid(sim: float, mid: float, k: float) -> float:
     """sim suele estar entre ~0.0 y ~1.0 (cosine similarity).
 
@@ -90,11 +69,20 @@ def similarity_to_percent_sigmoid(sim: float, mid: float, k: float) -> float:
     return round(y * 100.0, 2)
 
 
-def compare_id_against_segments(np_id: np.ndarray, segments: list[dict | None], face_stats: dict) -> dict:
+def percent_to_similarity(percent: float, mid: float, k: float) -> float:
+    """Inversa de similarity_to_percent_sigmoid: la similitud coseno que da ese %."""
+    p = min(max(percent / 100.0, 1e-6), 1.0 - 1e-6)
+    # Cerca de 100% la inversa pasa de 1, y la similitud coseno no puede.
+    return round(min(1.0, mid + math.log(p / (1.0 - p)) / k), 4)
+
+
+def compare_id_against_segments(
+    np_id: np.ndarray, segments: list[dict | None], face_stats: dict, threshold_percent: float
+) -> dict:
     """Compara la cara de la identificacion contra la mejor cara de cada tramo.
 
     El porcentaje es el promedio de los tramos, pero solo es match si TODOS
-    pasan el umbral: con el promedio solo, un tramo con otra persona quedaria
+    llegan a threshold_percent: con el promedio solo, un tramo con otra persona quedaria
     escondido (0.90 + 0.90 + 0.10 promedia 0.63 y pasaria).
     """
     id_face = pick_best_face(detect_faces(np_id))
@@ -102,10 +90,8 @@ def compare_id_against_segments(np_id: np.ndarray, segments: list[dict | None], 
         raise CheckError(422, "id_face_not_found", "No se detectó rostro en la identificación.")
 
     id_emb = embed(np_id, id_face)
-    id_bbox = to_bbox_dict(id_face)
-    _, id_face_data_uri = img_to_base64_jpeg(crop_face(np_id, id_bbox))
 
-    threshold = settings.sim_threshold
+    mid = settings.sim_threshold
     results = []
     for index, seg in enumerate(segments, start=1):
         if seg is None:
@@ -116,21 +102,20 @@ def compare_id_against_segments(np_id: np.ndarray, segments: list[dict | None], 
                 "raw_similarity": None,
                 "similarity_percent": 0.0,
                 "is_match": False,
-                "face_data_uri": None,
                 "live_score": None,
             })
             continue
 
         sim = cosine_similarity(id_emb, embed(seg["crop"], seg["face"]))
-        _, uri = img_to_base64_jpeg(Image.fromarray(seg["crop"]))
+        # Se compara el % que se muestra, para que lo visto y lo decidido coincidan.
+        percent = similarity_to_percent_sigmoid(sim, mid, settings.score_k)
         results.append({
             "index": index,
             "time_sec": seg["time_sec"],
             "face_found": True,
             "raw_similarity": round(sim, 6),
-            "similarity_percent": similarity_to_percent_sigmoid(sim, threshold, settings.score_k),
-            "is_match": sim >= threshold,
-            "face_data_uri": uri,
+            "similarity_percent": percent,
+            "is_match": percent >= threshold_percent,
             "live_score": seg["live_score"],
         })
 
@@ -154,15 +139,14 @@ def compare_id_against_segments(np_id: np.ndarray, segments: list[dict | None], 
         "is_match": is_match,
         "similarity_percent": round(float(np.mean([r["similarity_percent"] for r in results])), 2),
         "min_similarity": min(found) if found else None,
-        "tolerance": float(threshold),
+        "tolerance": percent_to_similarity(threshold_percent, mid, settings.score_k),
+        "threshold_percent": float(threshold_percent),
         "segments": results,
         "multiple_faces": multiple_faces,
-        "image1_bbox": id_bbox,
-        "image1_face_data_uri": id_face_data_uri,
     }
 
 
-async def compare_image_np_and_video_path(np1: np.ndarray, video_path: str) -> dict:
+async def compare_image_np_and_video_path(np1: np.ndarray, video_path: str, threshold_percent: float) -> dict:
     """Compara la identificacion contra la cara de cada tramo del video en disco."""
 
     try:
@@ -187,4 +171,4 @@ async def compare_image_np_and_video_path(np1: np.ndarray, video_path: str) -> d
             "No se detectó ninguna cara en el video. Prueba con mejor iluminación o rostro más cerca.",
         )
 
-    return await asyncio.to_thread(compare_id_against_segments, np1, segments, face_stats)
+    return await asyncio.to_thread(compare_id_against_segments, np1, segments, face_stats, threshold_percent)

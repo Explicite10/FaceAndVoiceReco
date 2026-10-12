@@ -28,7 +28,8 @@ class Checks(BaseModel):
 class Similarity(BaseModel):
     average_percent: float
     min_score: Optional[float] = None
-    threshold_score: float
+    threshold_score: float = Field(description="Similitud coseno equivalente a threshold_percent.")
+    threshold_percent: float = Field(description="Porcentaje minimo usado para decidir el match.")
 
 
 class FaceSegment(BaseModel):
@@ -115,11 +116,6 @@ class ErrorItem(BaseModel):
     http_status: int
 
 
-class Artifacts(BaseModel):
-    id_face_image: str
-    segment_face_images: List[Optional[str]]
-
-
 class Meta(BaseModel):
     api_version: str
     models: Dict[str, str]
@@ -133,7 +129,6 @@ class VerifyIdentityResponse(BaseModel):
     checks: Checks
     details: Details
     errors: List[ErrorItem]
-    artifacts: Optional[Artifacts] = Field(None, description="Solo si se pide include_images=true.")
     meta: Meta
 
 
@@ -146,8 +141,9 @@ class PhotoChecks(BaseModel):
 
 class PhotoSimilarity(BaseModel):
     score: float = Field(description="Similitud coseno.")
-    percent: float = Field(description="Mapeo sigmoide para mostrar; >= 50 es match. No es probabilidad.")
-    threshold_score: float
+    percent: float = Field(description="Mapeo sigmoide para mostrar. No es probabilidad.")
+    threshold_score: float = Field(description="Similitud coseno equivalente a threshold_percent.")
+    threshold_percent: float = Field(description="Porcentaje minimo usado para decidir el match.")
 
 
 class FaceQuality(BaseModel):
@@ -170,11 +166,6 @@ class PhotoDetails(BaseModel):
     anti_spoofing: Optional[PhotoAntiSpoofing] = None
 
 
-class PhotoArtifacts(BaseModel):
-    id_face_image: Optional[str] = None
-    photo_face_image: Optional[str] = None
-
-
 class VerifyPhotoResponse(BaseModel):
     request_id: str
     timestamp: str = Field(description="ISO 8601 en UTC.")
@@ -182,5 +173,4 @@ class VerifyPhotoResponse(BaseModel):
     result: Result
     checks: PhotoChecks
     details: PhotoDetails
-    artifacts: Optional[PhotoArtifacts] = Field(None, description="Solo si se pide include_images=true.")
     meta: Meta

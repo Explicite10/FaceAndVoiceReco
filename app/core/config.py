@@ -37,14 +37,18 @@ class Settings(BaseModel):
 
     # Rostro (YuNet + SFace). 0.363 es el umbral coseno publicado por OpenCV
     # para SFace; recalibrar con pares reales INE + video.
-    sim_threshold: float = 0.363        # match si similitud >= (en cada tramo)
+    sim_threshold: float = 0.363        # centro de la escala de %: ahi el porcentaje vale 50
     face_segments: int = 3              # tramos del video comparados contra la ID
     # Solo en el video (la INE trae una segunda foto "fantasma"). Se rechaza si hay
     # mas de una cara en al menos N de los cuadros analizados (~6 por segundo).
     multi_face_min_frames: int = 3
 
-    # Porcentaje mostrado: sigmoide centrada en el umbral (match <=> >= 50%).
+    # Porcentaje mostrado: sigmoide centrada en sim_threshold.
     score_k: float = 18.0
+    # Porcentaje minimo para que la cara coincida (en cada tramo del video, o en
+    # la foto). Cada request puede mandar el suyo en match_threshold_percent.
+    # 70% equivale a similitud coseno ~0.41; 50% a 0.363.
+    face_match_percent: float = float(os.getenv("FACE_MATCH_PERCENT", "70"))
 
     # ---------- Audio / voice liveness ----------
     # Frase temporal hardcodeada. El endpoint acepta override por request para

@@ -154,7 +154,7 @@ curl -X POST https://tu-servidor/api/verify-photo \
 | `id_image` | archivo de imagen | sí | Foto de la identificación |
 | `video` | `.mp4` `.mov` `.m4v` `.avi` `.mkv` `.webm` | sí | Video de 4 a 20 s, máximo 50 MB |
 | `expected_phrase` | texto | no | Frase esperada; si se omite, usa la configurada |
-| `include_images` | bool | no | Agrega los recortes de cara en base64 (~70 KB) |
+| `match_threshold_percent` | número 1–100 | no | % mínimo de similitud facial en cada tramo; default 70 |
 
 ```bash
 curl -X POST http://localhost:8000/api/verify-identity \
@@ -181,7 +181,6 @@ curl -X POST http://localhost:8000/api/verify-identity \
   },
   "details": { "face": {}, "voice": {}, "liveness": {} },
   "errors": [],
-  "artifacts": null,
   "meta": { "api_version": "1.0.0", "models": {} }
 }
 ```
@@ -196,7 +195,7 @@ Compara una foto de la persona contra la identificación. `multipart/form-data`:
 |---|---|---|---|
 | `id_image` | archivo de imagen | sí | Foto de la identificación |
 | `photo` | archivo de imagen | sí | Foto de la persona (selfie) |
-| `include_images` | bool | no | Agrega los recortes de cara en base64 |
+| `match_threshold_percent` | número 1–100 | no | % mínimo de similitud facial; default 70 |
 
 ```bash
 curl -X POST http://localhost:8000/api/verify-photo \
@@ -217,11 +216,11 @@ Validaciones (`checks`):
 | `quality` | `brightness` | `image_too_dark` / `image_overexposed` |
 | `liveness` | `anti_spoofing` | `spoof_detected` |
 
-La calidad solo se valida en la foto de la persona. La de la identificación se reporta en `details.id_face_quality`, pero no se valida, porque la foto de la INE suele ser chica. La respuesta tiene la misma forma general que la del video (`result`, `checks`, `details`, `artifacts`, `meta`), y en `details.similarity` vienen `score`, `percent` y `threshold_score`.
+La calidad solo se valida en la foto de la persona. La de la identificación se reporta en `details.id_face_quality`, pero no se valida, porque la foto de la INE suele ser chica. La respuesta tiene la misma forma general que la del video (`result`, `checks`, `details`, `meta`), y en `details.similarity` vienen `score`, `percent` y `threshold_score`.
 
 Este modo es **más débil** que el de video: no hay sincronía de labios ni frase hablada, solo anti-spoofing sobre una imagen.
 
-**Sobre los porcentajes de similitud facial:** `similarity_percent` es una curva sigmoide centrada en el umbral (≥ 50 % equivale a *match*) pensada para mostrarse en pantalla. **No es una probabilidad.** El valor real es `similarity_score` (similitud coseno).
+**Sobre los porcentajes de similitud facial:** el porcentaje es una curva sigmoide sobre la similitud coseno, pensada para mostrarse en pantalla. **No es una probabilidad.** La cara coincide si el porcentaje mostrado es mayor o igual a `match_threshold_percent` (70 por defecto, equivalente a una similitud coseno de ~0.41; 50 equivale a 0.363). En la respuesta vienen `threshold_percent` y `threshold_score` con el umbral que se usó.
 
 ---
 
@@ -240,6 +239,7 @@ Variables de entorno:
 | `FACE_MODELS_DIR` | `models/` | Carpeta de los modelos descargados |
 | `API_KEYS` | vacío | `proyecto:llave` separados por coma; vacío = sin autenticación (solo desarrollo) |
 | `CORS_ORIGINS` | vacío | Orígenes de navegador permitidos, separados por coma; vacío = sin CORS |
+| `FACE_MATCH_PERCENT` | `70` | % mínimo de similitud facial cuando el request no manda `match_threshold_percent` |
 | `RATE_LIMIT_REQUESTS` | `10` | Verificaciones permitidas por proyecto (o por IP sin llaves) en la ventana; `0` lo desactiva |
 | `RATE_LIMIT_WINDOW_SEC` | `60` | Duración de la ventana del rate limit |
 | `MAX_VIDEO_MB` | `50` | Tamaño máximo del video |

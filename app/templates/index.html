@@ -33,14 +33,6 @@
       .big { font-size: 34px; font-weight: bold; margin: 6px 0; }
       .overall { padding: 14px; border-radius: 12px; margin-bottom: 14px; border: 1px solid #ddd; }
       .section { border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }
-      .faces { display: flex; gap: 10px; margin: 8px 0; align-items: flex-start; }
-      .faces figure { margin: 0; flex: 1; min-width: 0; text-align: center; }
-      .faces img, .faces .noface { width: 100%; aspect-ratio: 1; object-fit: cover;
-                                   border-radius: 10px; border: 1px solid #eee; }
-      .faces .noface { display: flex; align-items: center; justify-content: center;
-                       background: #f6f6f6; color: #999; font-size: 12px; }
-      .faces .id img { border: 2px solid #1f4fd1; }
-      .faces figcaption { font-size: 12px; color: #666; margin-top: 4px; line-height: 1.4; }
       .ok { color: #1a7f37; font-weight: bold; } .bad { color: #b42318; font-weight: bold; }
       table { border-collapse: collapse; width: 100%; font-size: 13px; }
       td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
@@ -80,6 +72,8 @@
         <p class="warn" id="warn"></p>
 
         <h3>3) Verificar</h3>
+        <p class="muted">% minimo de similitud facial:
+          <input type="number" id="thr" min="1" max="100" step="any" placeholder="70" style="width:70px" /></p>
         <button id="btnSend" class="primary" disabled>Verificar identidad</button>
         <p class="muted" id="sendHint">Falta: identificacion y video.</p>
       </div>
@@ -193,7 +187,7 @@
         const fd = new FormData();
         fd.append("id_image", idFile, idFile.name);
         fd.append("video", videoBlob, videoBlob.name || `grabacion.${ext}`);
-        fd.append("include_images", "true");
+        if ($("thr").value) fd.append("match_threshold_percent", $("thr").value);
 
         try {
           const res = await fetch("/api/verify-identity", { method: "POST", body: fd, headers: authHeaders() });
@@ -217,22 +211,19 @@
         ).join("") + "</ul>";
       }
 
-      function renderFace(checks, f, art) {
+      function renderFace(checks, f) {
         let html = renderChecks(checks);
         if (!f) return html;
-        const imgs = art ? art.segment_face_images : [];
-        const segs = f.segments.map((s, i) => {
-          const img = s.face_detected && imgs[i] ? `<img src="${imgs[i]}">` : `<div class="noface">sin cara</div>`;
-          const when = s.time_sec != null ? ` · ${s.time_sec.toFixed(1)}s` : "";
-          const score = s.face_detected ? `${s.similarity_percent.toFixed(1)}%` : "&mdash;";
-          return `<figure>${img}<figcaption>tramo ${s.index}${when}<br>
-                  <span class="${s.match ? "ok" : "bad"}">${score} ${s.match ? "✓" : "✗"}</span></figcaption></figure>`;
+        const segs = f.segments.map((s) => {
+          const when = s.time_sec != null ? `${s.time_sec.toFixed(1)}s` : "&mdash;";
+          const score = s.face_detected ? `${s.similarity_percent.toFixed(1)}%` : "sin cara";
+          return `<tr><td>Tramo ${s.index} (${when})</td>
+                  <td><span class="${s.match ? "ok" : "bad"}">${score} ${s.match ? "✓" : "✗"}</span></td></tr>`;
         }).join("");
-        const idImg = art ? `<figure class="id"><img src="${art.id_face_image}"><figcaption>identificacion</figcaption></figure>` : "";
         return html + `
           <div class="big">${f.similarity.average_percent.toFixed(2)}%</div>
-          <p class="muted" style="margin-top:0">Promedio de ${f.segments.length} tramos · caras por cuadro (max): ${f.faces_in_video.max_per_frame}</p>
-          <div class="faces">${idImg}${segs}</div>`;
+          <p class="muted" style="margin-top:0">Promedio de ${f.segments.length} tramos · minimo por tramo ${f.similarity.threshold_percent}% · caras por cuadro (max): ${f.faces_in_video.max_per_frame}</p>
+          <table>${segs}</table>`;
       }
 
       function renderVoice(checks, v) {
@@ -261,13 +252,6 @@
           </table>`;
       }
 
-      function shrinkImages(d) {
-        if (!d.artifacts) return d;
-        const short = (u) => (u ? `<base64 ${Math.round(u.length / 1024)} KB>` : null);
-        return { ...d, artifacts: { id_face_image: short(d.artifacts.id_face_image),
-                                    segment_face_images: d.artifacts.segment_face_images.map(short) } };
-      }
-
       function render(status, d) {
         if (status !== 200) {
           $("result").innerHTML = `<span class="badge b-error">HTTP ${status}</span><pre>${esc(JSON.stringify(d, null, 2))}</pre>`;
@@ -282,12 +266,12 @@
             <span class="muted">&nbsp;${d.processing_time_ms} ms · ${esc(d.request_id.slice(0, 8))}</span>
             <p style="margin:8px 0 0">${esc(r.summary)}</p>${failed}
           </div>
-          <div class="section"><h3>Rostro (video vs identificacion)</h3>${renderFace(d.checks.face, d.details.face, d.artifacts)}</div>
+          <div class="section"><h3>Rostro (video vs identificacion)</h3>${renderFace(d.checks.face, d.details.face)}</div>
           <div class="section"><h3>Voz (frase)</h3>${renderVoice(d.checks.voice, d.details.voice)}</div>
           <div class="section"><h3>Prueba de vida</h3>${renderLiveness(d.checks.liveness, d.details.liveness)}</div>
           <details style="margin-top:12px">
             <summary class="muted">JSON completo</summary>
-            <pre>${esc(JSON.stringify(shrinkImages(d), null, 2))}</pre>
+            <pre>${esc(JSON.stringify(d, null, 2))}</pre>
           </details>`;
       }
 
@@ -318,6 +302,8 @@
         <div id="pPhotoPrevBox" style="margin-top:8px"></div>
 
         <h3>3) Verificar</h3>
+        <p class="muted">% minimo de similitud facial:
+          <input type="number" id="pThr" min="1" max="100" step="any" placeholder="70" style="width:70px" /></p>
         <button id="pBtnSend" class="primary" disabled>Comparar foto</button>
         <p class="muted" id="pSendHint">Falta: identificacion y foto.</p>
       </div>
@@ -390,7 +376,7 @@
         const fd = new FormData();
         fd.append("id_image", pIdFile, pIdFile.name);
         fd.append("photo", pPhoto, pPhoto.name);
-        fd.append("include_images", "true");
+        if ($("pThr").value) fd.append("match_threshold_percent", $("pThr").value);
 
         try {
           const res = await fetch("/api/verify-photo", { method: "POST", body: fd, headers: authHeaders() });
@@ -400,11 +386,6 @@
         }
         pRefresh();
       };
-
-      function pFaceFigure(src, caption, cls = "") {
-        const img = src ? `<img src="${src}">` : `<div class="noface">sin cara</div>`;
-        return `<figure class="${cls}">${img}<figcaption>${caption}</figcaption></figure>`;
-      }
 
       function pQualityRow(label, q) {
         if (!q) return `<tr><td>${label}</td><td>&mdash;</td></tr>`;
@@ -417,14 +398,11 @@
           $("pResult").innerHTML = `<span class="badge b-error">HTTP ${status}</span><pre>${esc(JSON.stringify(d, null, 2))}</pre>`;
           return;
         }
-        const r = d.result, det = d.details, art = d.artifacts || {};
+        const r = d.result, det = d.details;
         const failed = r.failed_checks.length
           ? `<p class="muted" style="margin:6px 0 0">${r.failed_checks.map((x) => `<code>${esc(x)}</code>`).join(" ")}</p>` : "";
         const sim = det.similarity;
         const match = d.checks.face.face_match.status === "passed";
-        const short = (u) => (u ? `<base64 ${Math.round(u.length / 1024)} KB>` : null);
-        const shown = d.artifacts
-          ? { ...d, artifacts: { id_face_image: short(art.id_face_image), photo_face_image: short(art.photo_face_image) } } : d;
 
         $("pResult").innerHTML = `
           <div class="overall">
@@ -434,11 +412,7 @@
           </div>
           <div class="section"><h3>Rostro (foto vs identificacion)</h3>${renderChecks(d.checks.face)}
             ${sim ? `<div class="big ${match ? "ok" : "bad"}">${sim.percent.toFixed(2)}%</div>
-                     <p class="muted" style="margin-top:0">similitud coseno ${sim.score} · umbral ${sim.threshold_score} · caras en la foto: ${det.faces_in_photo}</p>` : ""}
-            <div class="faces" style="max-width:360px">
-              ${pFaceFigure(art.id_face_image, "identificacion", "id")}
-              ${pFaceFigure(art.photo_face_image, "foto")}
-            </div>
+                     <p class="muted" style="margin-top:0">similitud coseno ${sim.score} · minimo ${sim.threshold_percent}% (coseno ${sim.threshold_score}) · caras en la foto: ${det.faces_in_photo}</p>` : ""}
           </div>
           <div class="section"><h3>Calidad de la foto</h3>${renderChecks(d.checks.quality)}
             <table>
@@ -452,7 +426,7 @@
           </div>
           <details style="margin-top:12px">
             <summary class="muted">JSON completo</summary>
-            <pre>${esc(JSON.stringify(shown, null, 2))}</pre>
+            <pre>${esc(JSON.stringify(d, null, 2))}</pre>
           </details>`;
       }
     </script>

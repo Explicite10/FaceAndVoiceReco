@@ -113,11 +113,6 @@ def pick_best_face(faces):
     return max(faces, key=area)
 
 
-def to_bbox_dict(face) -> dict:
-    x1, y1, x2, y2 = face.bbox.astype(int)
-    return {"top": int(y1), "right": int(x2), "bottom": int(y2), "left": int(x1)}
-
-
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     a = a.astype("float32")
     b = b.astype("float32")

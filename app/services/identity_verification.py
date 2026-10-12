@@ -33,9 +33,11 @@ async def verify_identity(
     id_image: UploadFile,
     video: UploadFile,
     expected_phrase: str | None = None,
-    include_images: bool = False,
+    match_threshold_percent: float | None = None,
 ) -> dict:
     t0 = time.time()
+    if match_threshold_percent is None:
+        match_threshold_percent = settings.face_match_percent
 
     ensure_image(id_image, "id_image")
     np_id = await read_as_np_rgb(id_image, "id_image")
@@ -51,7 +53,7 @@ async def verify_identity(
         # Secuencial a proposito: ambos son CPU-bound y en paralelo se pelean
         # por los mismos cores sin terminar antes.
         voice = await _run_part(verify_voice_from_path(temp_path, expected_phrase))
-        face = await _run_part(compare_image_np_and_video_path(np_id, temp_path))
+        face = await _run_part(compare_image_np_and_video_path(np_id, temp_path, match_threshold_percent))
         liveness = await _run_part(check_liveness(temp_path, face))
     finally:
         try:
@@ -64,5 +66,4 @@ async def verify_identity(
         voice=voice,
         liveness=liveness,
         elapsed_ms=int((time.time() - t0) * 1000),
-        include_images=include_images,
     )
