@@ -49,7 +49,7 @@ No uses los parámetros de url_retorno para decidir si se aprobó: la decisión 
 
 En cada intento el usuario hace **tres gestos al azar** (girar la cabeza, parpadear y alzar una mano, en orden y lado que cambian cada vez) y después **lee en voz alta la frase que mandó el proyecto**. El servicio compara su cara con la INE, revisa que sea una persona real y que haya dicho la frase.
 
-El servicio **no guarda** el video, la INE ni datos de la cara o la voz. Solo guarda un resumen de cada sesión (estado, decisión, intentos).
+El servicio **no guarda** el video, la INE ni datos de la cara o la voz. Solo guarda un resumen de cada sesión (estado, decisión, intentos). Si el proyecto lo pide (`incluir_video`, `incluir_fotogramas`), el video y fotogramas del intento final le llegan en el webhook y el servicio los descarta en cuanto el proyecto confirma la recepción.
 
 ---
 
@@ -98,6 +98,8 @@ Content-Type: multipart/form-data
 | `logo` | archivo | no | Logo para la pantalla del usuario. PNG, JPEG o WEBP; máximo 1 MB y 2000 px por lado. |
 | `color_primario` | texto | no | Color hexadecimal (`#1B56D6` o `#18D`). Se usa en botones y en el paso actual. |
 | `color_secundario` | texto | no | Color hexadecimal. Se usa en los pasos completados y en la animación de carga. |
+| `incluir_video` | `true`/`false` | no | El webhook trae el video del intento final. Por defecto `false`. |
+| `incluir_fotogramas` | `true`/`false` | no | El webhook trae 5 fotogramas JPEG del intento final. Por defecto `false`. |
 
 Si no se mandan `logo` ni los colores, la pantalla usa el diseño genérico. El color del texto sobre el color primario (blanco o negro) se elige solo, para que siempre se lea.
 
@@ -337,7 +339,15 @@ X-Vida-Firma:   t=1760000000,v1=8022fa202f251266714d9592170e7e0108d3607f928e7918
       { "numero": 1, "aprobado": false, "checks_fallidos": ["challenge.blink"], "duracion_ms": 5120, "creado": "…" },
       { "numero": 2, "aprobado": true, "checks_fallidos": [], "duracion_ms": 4870, "creado": "…" }
     ],
-    "resultado": { "…": "reporte técnico completo del último intento" }
+    "resultado": { "…": "reporte técnico completo del último intento" },
+    "evidencia": {
+      "intento": 2,
+      "video": { "tipo": "video/webm", "bytes": 1931228, "base64": "GkXfo59ChoEBQveBAULygQRC84EIQoKE…" },
+      "fotogramas": [
+        { "segundo": 1.51, "tipo": "image/jpeg", "base64": "/9j/4AAQSkZJRgABAQAAAQABAAD…" },
+        { "segundo": 4.51, "tipo": "image/jpeg", "base64": "/9j/4AAQSkZJRgABAQAAAQABAAD…" }
+      ]
+    }
   }
 }
 ```
@@ -364,6 +374,22 @@ X-Vida-Firma:   t=1760000000,v1=8022fa202f251266714d9592170e7e0108d3607f928e7918
 | `checks_fallidos` | Los mismos motivos como códigos estables, ej. `face.face_match`, `voice.phrase_match`, `challenge.blink` |
 
 `datos.resultado` es el reporte técnico completo, por si se quiere el detalle.
+
+### Video y fotogramas (`datos.evidencia`)
+
+Solo viene si la sesión se creó con `incluir_video=true` o `incluir_fotogramas=true`; si no, es `null`. En `sesion.expirada` y `sesion.cancelada` no viene.
+
+| Campo | Qué es |
+|---|---|
+| `intento` | Número del intento al que pertenecen: el que decidió la sesión (el aprobado, o el último si se agotaron). Los intentos anteriores no se entregan. |
+| `video` | `null` si no se pidió. `tipo` es el formato tal como lo grabó el navegador: `video/webm` en Chrome, Edge y Android; `video/mp4` en iPhone y Safari. `base64` es el archivo completo. |
+| `fotogramas` | 5 cuadros completos repartidos a lo largo del video, en JPEG. `segundo` es el momento del video. Vacío si no se pidieron. |
+
+Para guardarlos, decodificar el `base64` y escribir los bytes en un archivo con la extensión del `tipo` (`.webm`, `.mp4`, `.jpg`).
+
+**Tamaño:** el video dura unos 15 a 25 segundos a 640×480 y pesa de 2 a 5 MB, así que el webhook llega de 3 a 7 MB (el `base64` agrega un tercio). Su servidor debe aceptar cuerpos de al menos **10 MB**, y hasta 70 MB para el caso extremo. Por ejemplo, nginx acepta solo 1 MB por defecto (`client_max_body_size 70m;`); ASP.NET Core e IIS, 30 MB.
+
+**Responsabilidad:** al pedirlos, el video y las fotos de la persona quedan bajo resguardo del proyecto. Son datos personales sensibles: deben guardarse cifrados, con acceso restringido y por un tiempo definido, y el aviso de privacidad que acepta el usuario debe decir que se conservan.
 
 Los códigos de gesto posibles son `turn_left`, `turn_right`, `blink`, `raise_left_hand` y `raise_right_hand`. Izquierda y derecha son las del usuario.
 
@@ -618,3 +644,4 @@ Las consultas no traen el reporte ni la frase de sesiones viejas: el resultado c
 - [ ] La decisión se toma con `datos.resumen.aprobada` del webhook, no con los parámetros de `url_retorno`.
 - [ ] Se manejan los eventos `sesion.expirada` y `sesion.cancelada`, por ejemplo para ofrecer un enlace nuevo.
 - [ ] El usuario da su consentimiento para el uso de su imagen y voz antes de iniciar (son datos personales sensibles).
+- [ ] Si se piden `incluir_video` o `incluir_fotogramas`: el webhook acepta cuerpos de 10 MB o más, y el video y las fotos se guardan cifrados y por un tiempo definido.

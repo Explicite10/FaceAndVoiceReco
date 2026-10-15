@@ -6,9 +6,11 @@ Necesita PostgreSQL:
     TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres pytest -q
 """
 import asyncio
+import base64
 import json
 import os
 
+import cv2
 import httpx
 import numpy as np
 import pytest
@@ -17,7 +19,7 @@ pytestmark = pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="Falt
 
 from app import db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.services import entrega, proyectos, sesiones  # noqa: E402
+from app.services import entrega, evidencia, proyectos, sesiones  # noqa: E402
 from app.services.errors import CheckError  # noqa: E402
 
 INE = ("ine.jpg", b"cualquier-cosa", "application/octet-stream")
@@ -176,6 +178,42 @@ async def test_reintento_y_luego_agota_intentos(entorno):
     assert any("foto o una pantalla" in m for m in final["motivos"])  # la pantalla final dice por que
     evento = entorno["backend"].recibidos[-1]
     assert [i["aprobado"] for i in evento["datos"]["intentos"]] == [False, False]
+
+
+async def test_evidencia_del_intento_final(entorno):
+    s = await _crear(entorno, incluir_video="true", incluir_fotogramas="true")
+    token = _token(s)
+    entorno["resultados"].append(_informe(False, ("blink_not_detected",)))
+    await _intento(entorno, token)
+    assert sesiones._sesiones[s["id"]].evidencia is None  # un intento fallido no se guarda
+    entorno["resultados"].append(_informe(True))
+    await _intento(entorno, token)
+
+    ev = entorno["backend"].recibidos[-1]["datos"]["evidencia"]
+    assert ev["intento"] == 2
+    assert ev["video"]["tipo"] == "video/webm" and base64.b64decode(ev["video"]["base64"]) == b"x" * 10
+    assert ev["fotogramas"] == []  # el video falso no se puede decodificar
+    assert sesiones._sesiones[s["id"]].evidencia is None  # entregada: se olvida
+
+
+async def test_sin_evidencia_por_defecto(entorno):
+    s = await _crear(entorno)
+    entorno["resultados"].append(_informe(True))
+    await _intento(entorno, _token(s))
+    assert entorno["backend"].recibidos[-1]["datos"]["evidencia"] is None
+
+
+def test_fotogramas_de_un_video_real(tmp_path):
+    path = str(tmp_path / "v.avi")
+    out = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), 15, (64, 48))
+    for i in range(30):
+        out.write(np.full((48, 64, 3), i * 8, dtype=np.uint8))
+    out.release()
+    fotos = evidencia.extraer_fotogramas(path)
+    assert len(fotos) == evidencia.FOTOGRAMAS
+    assert all(f["tipo"] == "image/jpeg" for f in fotos)
+    assert [f["segundo"] for f in fotos] == sorted(f["segundo"] for f in fotos)
+    assert cv2.imdecode(np.frombuffer(base64.b64decode(fotos[0]["base64"]), np.uint8), cv2.IMREAD_COLOR).shape == (48, 64, 3)
 
 
 async def test_video_sin_reto(entorno):

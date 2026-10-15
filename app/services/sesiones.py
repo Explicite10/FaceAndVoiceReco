@@ -9,7 +9,9 @@
 
 La INE solo vive en memoria como vector de 128 numeros mientras la sesion esta
 activa, y el video solo mientras se analiza. En PostgreSQL queda el resumen
-(estado, decision, checks fallidos, entrega), nunca datos biometricos.
+(estado, decision, checks fallidos, entrega), nunca datos biometricos. Si el
+proyecto lo pide, el video y fotogramas del intento final van en el webhook y
+se descartan en cuanto lo confirma.
 """
 import asyncio
 import json
@@ -31,7 +33,7 @@ from app import db
 from app.core.config import settings
 from app.core.rate_limit import session_limiter
 from app.core.security import require_project
-from app.services import entrega, marca, proyectos
+from app.services import entrega, evidencia, marca, proyectos
 from app.services.challenge import GESTURE_LABELS, consume_challenge, create_challenge, discard_challenge
 from app.services.errors import CheckError
 from app.services.face_service import read_as_np_rgb
@@ -98,16 +100,21 @@ class Sesion:
     color_primario: str | None = None
     color_secundario: str | None = None
     logo: tuple[bytes, str] | None = field(default=None, repr=False)
+    # Evidencia del intento final en el webhook (opcional).
+    incluir_video: bool = False
+    incluir_fotogramas: bool = False
     # Solo en memoria y solo mientras hace falta.
     id_emb: np.ndarray | None = field(default=None, repr=False)
     reto_id: str | None = field(default=None, repr=False)
     reto: dict | None = field(default=None, repr=False)
     informe: dict | None = field(default=None, repr=False)
+    evidencia: dict | None = field(default=None, repr=False)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     def olvidar_biometria(self) -> None:
         self.id_emb = None
         self.informe = None
+        self.evidencia = None
         if self.reto_id:
             discard_challenge(self.reto_id)
         self.reto_id = self.reto = None
@@ -282,6 +289,7 @@ async def finalizar(s: Sesion) -> None:
         "resumen": resumen,
         "resultado": s.informe,
         "intentos": await _intentos_de(s.id),
+        "evidencia": s.evidencia,
     }
     resultado = await entrega.enviar(s.webhook_url, s.webhook_secreto, "sesion.completada", datos)
     s.entrega = {k: resultado[k] for k in ("ok", "codigo", "error", "intentos", "id")}
@@ -300,9 +308,19 @@ async def finalizar(s: Sesion) -> None:
 async def _procesar(s: Sesion, video_path: str, reto: dict) -> None:
     t0 = time.time()
     informe = None
+    datos_evidencia = None
     try:
         async with _procesamiento:
             informe = await analyze_video(video_path, s.id_emb, reto["phrase"], s.umbral_rostro, reto, t0)
+        # Solo el intento que decide la sesion: los anteriores no se entregan.
+        final = bool(informe and informe["result"]["approved"]) or s.intentos >= s.max_intentos
+        if final and (s.incluir_video or s.incluir_fotogramas):
+            try:
+                datos_evidencia = await asyncio.to_thread(
+                    evidencia.armar, video_path, s.intentos, s.incluir_video, s.incluir_fotogramas
+                )
+            except Exception:
+                logger.exception("No se pudo armar la evidencia de la sesion %s", s.id)
     except Exception:
         logger.exception("Fallo el analisis de la sesion %s", s.id)
     finally:
@@ -321,6 +339,7 @@ async def _procesar(s: Sesion, video_path: str, reto: dict) -> None:
         s.motivos = user_reasons(informe)
         if aprobado or s.intentos >= s.max_intentos:
             s.informe = informe
+            s.evidencia = datos_evidencia
             await finalizar(s)
             return
         s.estado = "pendiente"
@@ -413,6 +432,8 @@ async def crear_sesion(
     logo: UploadFile | None = File(None, description="Logo para la pantalla (PNG, JPEG o WEBP, max 1 MB)."),
     color_primario: str | None = Form(None, description="Hexadecimal, ej. #1B56D6: botones y paso actual."),
     color_secundario: str | None = Form(None, description="Hexadecimal: pasos completados y carga."),
+    incluir_video: bool = Form(False, description="El webhook trae el video del intento final (base64). No se guarda."),
+    incluir_fotogramas: bool = Form(False, description="El webhook trae fotogramas JPEG del intento final (base64). No se guardan."),
     proyecto: dict = Depends(require_project),
 ):
     session_limiter(request)
@@ -456,6 +477,8 @@ async def crear_sesion(
         color_primario=primario,
         color_secundario=secundario,
         logo=datos_logo,
+        incluir_video=incluir_video,
+        incluir_fotogramas=incluir_fotogramas,
     )
     await _persistir(s)
     _guardar_memoria(s)
