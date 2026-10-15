@@ -18,6 +18,8 @@ Para quien administra el servidor donde corre `https://prueba-de-vida.buzzword.c
 ```bash
 cd /ruta/del/proyecto          # donde ya está clonado
 cp .env .env.respaldo-$(date +%F)
+git fetch origin
+git checkout prueba-de-vida-produccion      # la rama de producción
 git pull
 ```
 
