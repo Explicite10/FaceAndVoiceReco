@@ -19,17 +19,17 @@ Necesito:
    la INE que ya tenemos en <dónde está la INE>, una frase que cambie en cada trámite y
    url_retorno=<URL de nuestra pantalla siguiente>. Guarda el id de la sesión junto al trámite.
 2. Redirigir al usuario a url_captura (o abrirla en <iframe | WebView>).
-3. Un endpoint POST <ruta del webhook> que lea el cuerpo CRUDO (o, si llega multipart/form-data con
-   video y fotogramas, los bytes de la parte "evento"), verifique X-Vida-Firma con
+3. Un endpoint POST <ruta del webhook> que lea el cuerpo CRUDO, verifique X-Vida-Firma con
    HMAC-SHA256 (tolerancia 300 s, comparación en tiempo constante), ignore entregas repetidas
    por X-Vida-Entrega, guarde datos.resumen.aprobada y el resumen en el trámite, y responda 200
    solo después de guardar. Maneja sesion.completada, sesion.expirada y sesion.cancelada.
 4. La api_key y el webhook_secreto se leen de variables de entorno PRUEBA_VIDA_API_KEY y
    PRUEBA_VIDA_WEBHOOK_SECRETO; nunca llegan al navegador ni a la app móvil.
 5. Una prueba unitaria de la verificación de firma con el ejemplo de la sección "Verificar la firma".
-6. (Si queremos el video y las fotos) mandar incluir_video=true e incluir_fotogramas=true al crear la
-   sesión; el webhook llega multipart/form-data: firmar la parte "evento", comparar el SHA-256 de cada
-   archivo con datos.evidencia.archivos y guardarlos cifrados. Ver la sección "Video y fotogramas".
+6. (Si queremos video, fotos y cara de la INE) mandar incluir_video, incluir_fotogramas e
+   incluir_rostro_ine en true al crear la sesión. Al recibir el webhook, descargar cada liga de
+   datos.evidencia con X-API-Key antes de "expira" (en segundo plano, sin retrasar la respuesta 200),
+   guardarlos cifrados y luego llamar DELETE /api/v1/sesiones/{id}/evidencia. Ver "Evidencia".
 No uses los parámetros de url_retorno para decidir si se aprobó: la decisión viene del webhook.
 ```
 
@@ -53,7 +53,7 @@ No uses los parámetros de url_retorno para decidir si se aprobó: la decisión 
 
 En cada intento el usuario hace **tres gestos al azar** (girar la cabeza, parpadear y alzar una mano, en orden y lado que cambian cada vez) y después **lee en voz alta la frase que mandó el proyecto**. El servicio compara su cara con la INE, revisa que sea una persona real y que haya dicho la frase.
 
-El servicio **no guarda** el video, la INE ni datos de la cara o la voz. Solo guarda un resumen de cada sesión (estado, decisión, intentos). Si el proyecto lo pide (`incluir_video`, `incluir_fotogramas`), el video y fotogramas del intento final le llegan en el webhook, como archivos binarios, y el servicio los descarta en cuanto el proyecto confirma la recepción.
+El servicio **no guarda** el video, la INE ni datos de la cara o la voz. Solo guarda un resumen de cada sesión (estado, decisión, intentos). Si el proyecto lo pide, el webhook trae ligas temporales para descargar el video, fotogramas y la cara de la INE del intento final; el servicio los borra al vencer las ligas o cuando el proyecto lo indica.
 
 ---
 
@@ -102,8 +102,9 @@ Content-Type: multipart/form-data
 | `logo` | archivo | no | Logo para la pantalla del usuario. PNG, JPEG o WEBP; máximo 1 MB y 2000 px por lado. |
 | `color_primario` | texto | no | Color hexadecimal (`#1B56D6` o `#18D`). Se usa en botones y en el paso actual. |
 | `color_secundario` | texto | no | Color hexadecimal. Se usa en los pasos completados y en la animación de carga. |
-| `incluir_video` | `true`/`false` | no | El webhook trae el video del intento final, en binario. Por defecto `false`. Ver [Video y fotogramas](#video-y-fotogramas). |
-| `incluir_fotogramas` | `true`/`false` | no | El webhook trae 5 fotogramas JPEG del intento final, en binario. Por defecto `false`. |
+| `incluir_video` | `true`/`false` | no | El webhook trae una liga al video del intento final, en MP4. Por defecto `false`. Ver [Evidencia](#evidencia-video-fotogramas-y-cara-de-la-ine). |
+| `incluir_fotogramas` | `true`/`false` | no | El webhook trae ligas a 3 fotogramas JPEG con la cara de frente. Por defecto `false`. |
+| `incluir_rostro_ine` | `true`/`false` | no | El webhook trae una liga al recorte de la cara de la INE, en JPEG. Por defecto `false`. |
 
 Si no se mandan `logo` ni los colores, la pantalla usa el diseño genérico. El color del texto sobre el color primario (blanco o negro) se elige solo, para que siempre se lea.
 
@@ -276,8 +277,6 @@ X-Vida-Entrega: evt_8e516baa65dc4ed2a26739d05a4c1eb2
 X-Vida-Firma:   t=1760000000,v1=8022fa202f251266714d9592170e7e0108d3607f928e791830fe6f9c3ea188f8
 ```
 
-Si la sesión se creó con `incluir_video` o `incluir_fotogramas`, el `sesion.completada` llega como `Content-Type: multipart/form-data` con los archivos en binario (ver [Video y fotogramas](#video-y-fotogramas)). Todo lo demás llega siempre como `application/json`.
-
 ### Eventos
 
 | `X-Vida-Evento` | Cuándo | Qué trae |
@@ -351,6 +350,8 @@ Si la sesión se creó con `incluir_video` o `incluir_fotogramas`, el `sesion.co
 }
 ```
 
+`evidencia` es `null` salvo que la sesión la haya pedido; ver [Evidencia](#evidencia-video-fotogramas-y-cara-de-la-ine).
+
 ### Qué guardar
 
 **La decisión final es `datos.resumen.aprobada`** (igual a `datos.sesion.aprobada`). Solo es `true` si pasaron todas las validaciones.
@@ -376,132 +377,72 @@ Si la sesión se creó con `incluir_video` o `incluir_fotogramas`, el `sesion.co
 
 Los códigos de gesto posibles son `turn_left`, `turn_right`, `blink`, `raise_left_hand` y `raise_right_hand`. Izquierda y derecha son las del usuario.
 
-### Video y fotogramas
+### Evidencia: video, fotogramas y cara de la INE
 
-Solo si la sesión se creó con `incluir_video=true` o `incluir_fotogramas=true`. En ese caso el webhook `sesion.completada` llega como **`multipart/form-data`**, con estas partes:
-
-| Parte (`name`) | Archivo | `Content-Type` | Qué es |
-|---|---|---|---|
-| `evento` | `evento.json` | `application/json` | El mismo JSON de arriba. **Es lo que se firma.** |
-| `video` | `video.webm` o `video.mp4` | `video/webm` o `video/mp4` | El video completo del intento, tal como lo grabó el navegador: WebM en Chrome, Edge y Android; MP4 en iPhone y Safari. Solo con `incluir_video`. |
-| `fotograma_1` … `fotograma_5` | `fotograma_1.jpg` … | `image/jpeg` | 5 cuadros completos repartidos a lo largo del video. Solo con `incluir_fotogramas`. |
-
-Los archivos van en **binario**, sin base64: se guardan tal cual llegan. Pertenecen al intento que decidió la sesión (el aprobado, o el último si se agotaron); los anteriores no se entregan.
-
-En el JSON, `datos.evidencia` describe los archivos, con su SHA-256 para comprobar que no los alteraron:
+Solo si la sesión se creó con `incluir_video`, `incluir_fotogramas` o `incluir_rostro_ine` en `true`. El webhook **no trae los archivos**: trae ligas temporales para descargarlos.
 
 ```json
 "evidencia": {
   "intento": 2,
-  "archivos": [
-    { "campo": "video", "nombre": "video.webm", "tipo": "video/webm", "bytes": 1931228,
-      "sha256": "3f9a…" },
-    { "campo": "fotograma_1", "nombre": "fotograma_1.jpg", "tipo": "image/jpeg", "bytes": 22252,
-      "sha256": "a41c…", "segundo": 1.51 }
-  ]
+  "expira": "2026-10-15T19:00:00+00:00",
+  "video": {
+    "url": "https://prueba-de-vida.buzzword.com.mx/api/v1/sesiones/ses_81ef.../evidencia/video",
+    "tipo": "video/mp4", "bytes": 690226
+  },
+  "fotogramas": [
+    { "orden": 1, "segundo": 1.4, "de_frente": true,
+      "url": "https://.../api/v1/sesiones/ses_81ef.../evidencia/fotograma/1", "tipo": "image/jpeg", "bytes": 56276 },
+    { "orden": 2, "segundo": 3.1, "de_frente": true, "url": ".../evidencia/fotograma/2", "tipo": "image/jpeg", "bytes": 57031 },
+    { "orden": 3, "segundo": 5.0, "de_frente": true, "url": ".../evidencia/fotograma/3", "tipo": "image/jpeg", "bytes": 57182 }
+  ],
+  "rostro_ine": {
+    "url": "https://.../api/v1/sesiones/ses_81ef.../evidencia/rostro-ine", "tipo": "image/jpeg", "bytes": 12480
+  }
 }
 ```
 
-Sin evidencia pedida, `datos.evidencia` es `null` y el webhook es JSON simple. Si se pidió pero no se pudo extraer (por ejemplo, un video que no se puede leer), llega multipart con `archivos` vacío o incompleto.
+| Campo | Qué es |
+|---|---|
+| `intento` | El intento al que pertenecen: el que decidió la sesión (el aprobado, o el último si se agotaron). De los anteriores no se entrega nada. |
+| `expira` | Hasta cuándo se pueden descargar: 60 minutos después de terminar la sesión (nunca menos de 30). |
+| `video` | El video completo, en **MP4** (H.264 + AAC), venga del navegador que venga. Si la conversión fallara, llega el original y `tipo` lo dice (`video/webm`). `null` si no se pidió. |
+| `fotogramas` | 3 cuadros completos (640×480) en JPEG, uno por cada tercio del video, con **una sola cara y de frente**: en cada tercio se elige el cuadro más derecho entre los nítidos. `de_frente` es `false` si en ese tercio la persona nunca miró de frente (estaba haciendo un gesto); entonces va el menos girado. Vacío si no se pidieron. |
+| `rostro_ine` | Recorte de la cara de la INE con un margen alrededor, en JPEG. `null` si no se pidió. |
 
-**Cómo procesarlo:**
+Si se pidió evidencia pero no se pudo generar, `expira` es `null` y los campos vienen vacíos.
 
-1. Leer la parte `evento` como **bytes**, tal como llegó (es un archivo, así que el framework la entrega sin modificar).
-2. Verificar la firma sobre esos bytes, igual que en [Verificar la firma](#verificar-la-firma).
-3. Por cada elemento de `datos.evidencia.archivos`, tomar la parte con ese `campo`, calcular su SHA-256 y compararlo con `sha256`. Si alguno no coincide o falta, responder `400`.
-4. Guardar los archivos y responder `2xx`.
+**Descargar.** Con la misma `api_key` del proyecto:
 
-<details>
-<summary>Ejemplo completo en ASP.NET Core (.NET 8): JSON y multipart en el mismo endpoint</summary>
-
-```csharp
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-
-var builder = WebApplication.CreateBuilder(args);
-// El webhook con video puede pasar de los 30 MB que Kestrel acepta por defecto.
-builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 60_000_000);
-var app = builder.Build();
-
-app.MapPost("/api/prueba-vida/webhook", async (HttpRequest req) =>
-{
-    var secreto = Environment.GetEnvironmentVariable("PRUEBA_VIDA_WEBHOOK_SECRETO")!;
-    byte[] cuerpo;
-    IFormCollection? form = null;
-    if (req.HasFormContentType)
-    {
-        // Con video y fotogramas: multipart. Se firma la parte "evento".
-        form = await req.ReadFormAsync();
-        var parte = form.Files.GetFile("evento");
-        if (parte is null) return Results.BadRequest();
-        cuerpo = await Leer(parte);
-    }
-    else
-    {
-        using var ms = new MemoryStream();
-        await req.Body.CopyToAsync(ms);
-        cuerpo = ms.ToArray();
-    }
-    if (!FirmaValida(secreto, req.Headers["X-Vida-Firma"].ToString(), cuerpo)) return Results.Unauthorized();
-
-    using var evento = JsonDocument.Parse(cuerpo);
-    var datos = evento.RootElement.GetProperty("datos");
-    // TODO: si evento.RootElement.GetProperty("id") ya se proceso, responder 200 sin hacer nada.
-
-    if (form is not null && datos.TryGetProperty("evidencia", out var ev) && ev.ValueKind == JsonValueKind.Object)
-    {
-        foreach (var a in ev.GetProperty("archivos").EnumerateArray())
-        {
-            var archivo = form.Files.GetFile(a.GetProperty("campo").GetString()!);
-            if (archivo is null) return Results.BadRequest();
-            var bytes = await Leer(archivo);
-            var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-            if (sha != a.GetProperty("sha256").GetString()) return Results.BadRequest();
-            // TODO: guardar `bytes` (cifrado) como a.GetProperty("nombre").GetString()
-        }
-    }
-    // TODO: guardar datos.GetProperty("resumen") y la decision, en el tramite de
-    // datos.GetProperty("sesion").GetProperty("referencia_externa").
-    return Results.Ok();
-});
-
-app.Run();
-
-static async Task<byte[]> Leer(IFormFile archivo)
-{
-    using var ms = new MemoryStream();
-    await archivo.CopyToAsync(ms);
-    return ms.ToArray();
-}
-
-static bool FirmaValida(string secreto, string cabecera, byte[] cuerpo)
-{
-    var partes = new Dictionary<string, string>();
-    foreach (var p in cabecera.Split(','))
-    {
-        var kv = p.Split('=', 2);
-        if (kv.Length == 2) partes[kv[0]] = kv[1];
-    }
-    if (!partes.TryGetValue("t", out var t) || !partes.TryGetValue("v1", out var v1)
-        || !long.TryParse(t, out var ts)) return false;
-    if (Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ts) > 300) return false;
-    var mensaje = Encoding.UTF8.GetBytes(t + ".").Concat(cuerpo).ToArray();
-    var esperado = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secreto), mensaje)).ToLowerInvariant();
-    return CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(esperado), Encoding.ASCII.GetBytes(v1));
-}
+```bash
+curl -H "X-API-Key: pv_..." -o video.mp4 "https://prueba-de-vida.buzzword.com.mx/api/v1/sesiones/ses_.../evidencia/video"
 ```
-</details>
 
-**Tamaño:** el video dura unos 15 a 25 segundos a 640×480 y pesa de 2 a 5 MB; los fotogramas, unos 20 KB cada uno. Su servidor debe aceptar peticiones de al menos **10 MB**, y hasta 55 MB para el caso extremo. Por ejemplo, nginx acepta solo 1 MB por defecto (`client_max_body_size 55m;`); ASP.NET Core corta a los 30 MB por defecto (el ejemplo de arriba lo sube con `MaxRequestBodySize`; en IIS además `maxAllowedContentLength` en `web.config`).
+Se puede descargar cada archivo las veces que haga falta hasta `expira`. Al terminar, borrarla:
 
-**Responsabilidad:** al pedirlos, el video y las fotos de la persona quedan bajo resguardo del proyecto. Son datos personales sensibles: deben guardarse cifrados, con acceso restringido y por un tiempo definido, y el aviso de privacidad que acepta el usuario debe decir que se conservan.
+```bash
+curl -X DELETE -H "X-API-Key: pv_..." "https://prueba-de-vida.buzzword.com.mx/api/v1/sesiones/ses_.../evidencia"
+```
+
+| Respuesta | Significa |
+|---|---|
+| `200` | El archivo, con su `Content-Type` |
+| `204` | (`DELETE`) Evidencia borrada |
+| `401` | Falta la `api_key` o no es válida |
+| `404` | La sesión no existe, es de otro proyecto, o ese archivo no forma parte de la evidencia |
+| `410` | La evidencia ya venció o se borró |
+
+**Recomendaciones:**
+
+- Responder el webhook con `200` primero y descargar en segundo plano: el webhook tiene 20 segundos.
+- Hacer el `DELETE` solo después de guardar todo. No se borra al descargar, para que un corte de red no la pierda.
+- Si el servicio se reinicia antes de que la descarguen, la evidencia se pierde (`410`).
+- **Responsabilidad:** el video y las fotos son datos personales sensibles. Al descargarlos quedan bajo resguardo del proyecto: guardarlos cifrados, con acceso restringido y por un tiempo definido, y mencionarlo en el aviso de privacidad.
 
 ### Verificar la firma
 
 Antes de usar el resultado hay que comprobar que viene del servicio:
 
-1. Leer el **cuerpo crudo** de la petición, tal como llegó en bytes, sin parsearlo ni reformatearlo antes. Si llegó como `multipart/form-data`, en lugar del cuerpo se usan los bytes de la parte `evento`.
+1. Leer el **cuerpo crudo** de la petición, tal como llegó en bytes, sin parsearlo ni reformatearlo antes.
 2. Separar el header `X-Vida-Firma` por comas y luego por `=`. Se obtienen `t` (segundos Unix) y `v1` (firma en hexadecimal).
 3. Rechazar si `t` difiere más de **300 segundos** de la hora actual.
 4. Calcular `HMAC-SHA256` con la llave `webhook_secreto`, sobre el mensaje `t` + `"."` + cuerpo crudo.
@@ -721,6 +662,8 @@ Con el mismo header `X-API-Key`. Cada proyecto solo ve sus sesiones.
 | `GET` | `/api/v1/sesiones/{id}` | Estado de una sesión y de sus intentos |
 | `GET` | `/api/v1/sesiones?estado=&limite=` | Sesiones del proyecto, de la más reciente a la más vieja (`limite` hasta 500) |
 | `POST` | `/api/v1/sesiones/{id}/cancelar` | Cancelar una sesión activa. Llega el webhook `sesion.cancelada` |
+| `GET` | `/api/v1/sesiones/{id}/evidencia/video`, `/fotograma/{1-3}`, `/rostro-ine` | Descargar la evidencia (ver [Evidencia](#evidencia-video-fotogramas-y-cara-de-la-ine)) |
+| `DELETE` | `/api/v1/sesiones/{id}/evidencia` | Borrar la evidencia ya descargada |
 
 Las consultas no traen el reporte ni la frase de sesiones viejas: el resultado completo solo llega por el webhook.
 
@@ -748,4 +691,4 @@ Las consultas no traen el reporte ni la frase de sesiones viejas: el resultado c
 - [ ] La decisión se toma con `datos.resumen.aprobada` del webhook, no con los parámetros de `url_retorno`.
 - [ ] Se manejan los eventos `sesion.expirada` y `sesion.cancelada`, por ejemplo para ofrecer un enlace nuevo.
 - [ ] El usuario da su consentimiento para el uso de su imagen y voz antes de iniciar (son datos personales sensibles).
-- [ ] Si se piden `incluir_video` o `incluir_fotogramas`: el webhook acepta `multipart/form-data` de 10 MB o más, firma la parte `evento`, compara el SHA-256 de cada archivo, y el video y las fotos se guardan cifrados y por un tiempo definido.
+- [ ] Si se pide evidencia: se descarga antes de `expira`, sin retrasar la respuesta del webhook; se guarda cifrada y por un tiempo definido; y se llama al `DELETE` al terminar.

@@ -128,6 +128,9 @@ class Settings(BaseModel):
     session_max_attempts: int = int(os.getenv("SESSION_MAX_ATTEMPTS", "3"))
     # Analisis de video simultaneos: cada uno ocupa varios nucleos por un rato.
     max_concurrent_verifications: int = int(os.getenv("MAX_CONCURRENT_VERIFICATIONS", "1"))
+    # Vigencia de las ligas de evidencia (video, fotogramas, cara de la INE) que
+    # trae el webhook cuando la sesion las pide. Minimo 30 minutos.
+    evidence_minutes: int = max(30, int(os.getenv("EVIDENCE_MINUTES", "60")))
     delivery_timeout_sec: float = float(os.getenv("DELIVERY_TIMEOUT_SEC", "20"))
     delivery_retries: int = int(os.getenv("DELIVERY_RETRIES", "2"))
     # Acepta webhook_url / url_retorno con http:// (solo desarrollo local).

@@ -6,13 +6,11 @@ Necesita PostgreSQL:
     TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres pytest -q
 """
 import asyncio
-import email.policy
-import hashlib
 import json
-from email.parser import BytesParser
+import shutil
+from datetime import timedelta
 import os
 
-import cv2
 import httpx
 import numpy as np
 import pytest
@@ -21,6 +19,7 @@ pytestmark = pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="Falt
 
 from app import db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.core.config import settings  # noqa: E402
 from app.services import entrega, evidencia, proyectos, sesiones  # noqa: E402
 from app.services.errors import CheckError  # noqa: E402
 
@@ -39,35 +38,19 @@ def _informe(aprobado: bool, codes: tuple[str, ...] = ()) -> dict:
     }
 
 
-def _partes_multipart(request: httpx.Request) -> dict[str, tuple[str, str, bytes]]:
-    """{campo: (nombre, tipo, bytes)} de un cuerpo multipart/form-data."""
-    crudo = b"Content-Type: " + request.headers["Content-Type"].encode() + b"\r\n\r\n" + request.read()
-    mensaje = BytesParser(policy=email.policy.HTTP).parsebytes(crudo)
-    return {
-        p.get_param("name", header="content-disposition"): (p.get_filename(), p.get_content_type(), p.get_payload(decode=True))
-        for p in mensaje.iter_parts()
-    }
-
-
 class Proyecto:
     """Backend falso: guarda lo que recibe y responde con `codigo`."""
 
     def __init__(self, secreto: str):
         self.secreto = secreto
         self.recibidos: list[dict] = []
-        self.archivos: list[dict] = []
         self.codigo = 200
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
-        if request.headers["Content-Type"].startswith("multipart/form-data"):
-            partes = _partes_multipart(request)
-            cuerpo = partes.pop("evento")[2]  # se firma solo el JSON
-        else:
-            assert request.headers["Content-Type"] == "application/json"
-            cuerpo, partes = request.read(), {}
+        assert request.headers["Content-Type"] == "application/json"
+        cuerpo = request.read()
         assert entrega.verificar(self.secreto, request.headers["X-Vida-Firma"], cuerpo)
         self.recibidos.append(json.loads(cuerpo))
-        self.archivos.append(partes)
         return httpx.Response(self.codigo)
 
 
@@ -199,22 +182,82 @@ async def test_reintento_y_luego_agota_intentos(entorno):
     assert [i["aprobado"] for i in evento["datos"]["intentos"]] == [False, False]
 
 
-async def test_evidencia_del_intento_final(entorno):
-    s = await _crear(entorno, incluir_video="true", incluir_fotogramas="true")
+@pytest.fixture
+def evidencia_falsa(monkeypatch, tmp_path):
+    """Sin ffmpeg ni modelos: convierte copiando y da fotogramas fijos."""
+    monkeypatch.setattr(sesiones, "UPLOAD_DIR", str(tmp_path))
+    estado = {"mp4": True}
+
+    def a_mp4(origen, destino):
+        if estado["mp4"]:
+            shutil.copyfile(origen, destino)
+        return estado["mp4"]
+
+    monkeypatch.setattr(evidencia, "a_mp4", a_mp4)
+    monkeypatch.setattr(evidencia, "fotogramas_de_frente", lambda path: [
+        {"segundo": 1.0 + i, "de_frente": True, "datos": f"foto{i}".encode()} for i in range(1, 4)])
+    monkeypatch.setattr(evidencia, "recorte_rostro", lambda np_rgb: b"cara-ine")
+    return {"dir": tmp_path, "estado": estado}
+
+
+def _ruta(url: str) -> str:
+    return url.split("http://vida.test", 1)[1]
+
+
+async def test_evidencia_por_ligas_temporales(entorno, evidencia_falsa):
+    c, h = entorno["cliente"], {"X-API-Key": entorno["key"]}
+    s = await _crear(entorno, incluir_video="true", incluir_fotogramas="true", incluir_rostro_ine="true")
     token = _token(s)
     entorno["resultados"].append(_informe(False, ("blink_not_detected",)))
     await _intento(entorno, token)
-    assert sesiones._sesiones[s["id"]].evidencia is None  # un intento fallido no se guarda
+    assert sesiones._sesiones[s["id"]].evidencia is None  # un intento fallido no deja evidencia
     entorno["resultados"].append(_informe(True))
     await _intento(entorno, token)
 
     ev = entorno["backend"].recibidos[-1]["datos"]["evidencia"]
-    assert ev["intento"] == 2
-    # El video falso no se puede decodificar: no hay fotogramas, pero si el video, en binario.
-    assert ev["archivos"] == [{"campo": "video", "nombre": "video.webm", "tipo": "video/webm", "bytes": 10,
-                               "sha256": hashlib.sha256(b"x" * 10).hexdigest()}]
-    assert entorno["backend"].archivos[-1] == {"video": ("video.webm", "video/webm", b"x" * 10)}
-    assert sesiones._sesiones[s["id"]].evidencia is None  # entregada: se olvida
+    assert ev["intento"] == 2 and ev["expira"]
+    assert ev["video"]["tipo"] == "video/mp4" and ev["video"]["url"].endswith(f"/api/v1/sesiones/{s['id']}/evidencia/video")
+    assert [f["orden"] for f in ev["fotogramas"]] == [1, 2, 3]
+    assert all(f["tipo"] == "image/jpeg" and f["de_frente"] for f in ev["fotogramas"])
+    assert ev["rostro_ine"]["tipo"] == "image/jpeg"
+    assert sesiones._sesiones[s["id"]].rostro_ine is None  # ya se olvido en memoria; queda solo el archivo
+
+    video = await c.get(_ruta(ev["video"]["url"]), headers=h)
+    assert video.status_code == 200 and video.content == b"x" * 10
+    assert video.headers["content-type"] == "video/mp4" and video.headers["cache-control"] == "no-store"
+    assert (await c.get(_ruta(ev["fotogramas"][1]["url"]), headers=h)).content == b"foto2"
+    assert (await c.get(_ruta(ev["rostro_ine"]["url"]), headers=h)).content == b"cara-ine"
+
+    assert (await c.get(_ruta(ev["video"]["url"]))).status_code == 401
+    assert (await c.get(_ruta(ev["video"]["url"]), headers={"X-API-Key": entorno["otro_key"]})).status_code == 404
+    assert (await c.get(f"/api/v1/sesiones/{s['id']}/evidencia/fotograma/9", headers=h)).status_code == 404
+
+    assert (await c.delete(f"/api/v1/sesiones/{s['id']}/evidencia", headers=h)).status_code == 204
+    assert (await c.get(_ruta(ev["video"]["url"]), headers=h)).status_code == 410
+    assert not (evidencia_falsa["dir"] / "evidencia" / s["id"]).exists()
+
+
+async def test_evidencia_vence(entorno, evidencia_falsa):
+    s = await _crear(entorno, incluir_fotogramas="true")
+    entorno["resultados"].append(_informe(True))
+    await _intento(entorno, _token(s))
+    ev = entorno["backend"].recibidos[-1]["datos"]["evidencia"]
+    assert ev["video"] is None and ev["rostro_ine"] is None and len(ev["fotogramas"]) == 3
+
+    sesion = sesiones._sesiones[s["id"]]
+    sesion.evidencia_expira -= timedelta(minutes=settings.evidence_minutes + 1)
+    await sesiones.mantenimiento()
+    r = await entorno["cliente"].get(_ruta(ev["fotogramas"][0]["url"]), headers={"X-API-Key": entorno["key"]})
+    assert r.status_code == 410
+    assert not (evidencia_falsa["dir"] / "evidencia" / s["id"]).exists()
+
+
+async def test_video_original_si_no_se_puede_convertir(entorno, evidencia_falsa):
+    evidencia_falsa["estado"]["mp4"] = False
+    s = await _crear(entorno, incluir_video="true")
+    entorno["resultados"].append(_informe(True))
+    await _intento(entorno, _token(s))
+    assert entorno["backend"].recibidos[-1]["datos"]["evidencia"]["video"]["tipo"] == "video/webm"
 
 
 async def test_sin_evidencia_por_defecto(entorno):
@@ -222,22 +265,28 @@ async def test_sin_evidencia_por_defecto(entorno):
     entorno["resultados"].append(_informe(True))
     await _intento(entorno, _token(s))
     assert entorno["backend"].recibidos[-1]["datos"]["evidencia"] is None
-    assert entorno["backend"].archivos[-1] == {}  # JSON simple, como siempre
 
 
-def test_fotogramas_de_un_video_real(tmp_path):
-    path = str(tmp_path / "v.avi")
-    out = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), 15, (64, 48))
+def test_pose_de_frente():
+    # Fila YuNet: caja (4), ojo der., ojo izq., nariz, boca der., boca izq.
+    de_frente = np.array([0, 0, 100, 100, 30, 40, 70, 40, 50, 60, 35, 80, 65, 80, 0.9], dtype=np.float32)
+    girada = de_frente.copy()
+    girada[8] = 65  # nariz hacia un ojo
+    assert evidencia._giro(de_frente)[0] == 0
+    assert evidencia._giro(girada)[0] > evidencia._MAX_GIRO
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="Falta ffmpeg")
+def test_conversion_real_a_mp4(tmp_path):
+    import cv2
+    origen = str(tmp_path / "v.avi")
+    out = cv2.VideoWriter(origen, cv2.VideoWriter_fourcc(*"MJPG"), 15, (64, 48))
     for i in range(30):
         out.write(np.full((48, 64, 3), i * 8, dtype=np.uint8))
     out.release()
-    fotos = evidencia.extraer_fotogramas(path)
-    assert [f["campo"] for f in fotos] == [f"fotograma_{i}" for i in range(1, evidencia.FOTOGRAMAS + 1)]
-    assert all(f["tipo"] == "image/jpeg" and f["nombre"].endswith(".jpg") for f in fotos)
-    assert [f["segundo"] for f in fotos] == sorted(f["segundo"] for f in fotos)
-    assert cv2.imdecode(np.frombuffer(fotos[0]["datos"], np.uint8), cv2.IMREAD_COLOR).shape == (48, 64, 3)
-    descrito = evidencia.describir(1, fotos)["archivos"][0]
-    assert "datos" not in descrito and descrito["sha256"] == hashlib.sha256(fotos[0]["datos"]).hexdigest()
+    destino = str(tmp_path / "v.mp4")
+    assert evidencia.a_mp4(origen, destino)
+    assert open(destino, "rb").read()[4:8] == b"ftyp"
 
 
 async def test_video_sin_reto(entorno):

@@ -10,8 +10,8 @@
 La INE solo vive en memoria como vector de 128 numeros mientras la sesion esta
 activa, y el video solo mientras se analiza. En PostgreSQL queda el resumen
 (estado, decision, checks fallidos, entrega), nunca datos biometricos. Si el
-proyecto lo pide, el video y fotogramas del intento final van en el webhook (en
-binario, multipart) y se descartan en cuanto lo confirma.
+proyecto lo pide, el webhook trae ligas temporales al video, fotogramas y cara
+de la INE del intento final; se borran al vencer o cuando el proyecto lo pide.
 """
 import asyncio
 import json
@@ -26,7 +26,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app import db
@@ -100,24 +100,37 @@ class Sesion:
     color_primario: str | None = None
     color_secundario: str | None = None
     logo: tuple[bytes, str] | None = field(default=None, repr=False)
-    # Evidencia del intento final en el webhook (opcional).
+    # Evidencia del intento final, por ligas temporales en el webhook (opcional).
     incluir_video: bool = False
     incluir_fotogramas: bool = False
+    incluir_rostro_ine: bool = False
     # Solo en memoria y solo mientras hace falta.
     id_emb: np.ndarray | None = field(default=None, repr=False)
     reto_id: str | None = field(default=None, repr=False)
     reto: dict | None = field(default=None, repr=False)
     informe: dict | None = field(default=None, repr=False)
-    evidencia: list[dict] | None = field(default=None, repr=False)
+    rostro_ine: bytes | None = field(default=None, repr=False)
+    # {nombre: {archivo, tipo, bytes, ...}} en disco hasta evidencia_expira.
+    evidencia: dict | None = field(default=None, repr=False)
+    evidencia_expira: datetime | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     def olvidar_biometria(self) -> None:
         self.id_emb = None
         self.informe = None
-        self.evidencia = None
+        self.rostro_ine = None
         if self.reto_id:
             discard_challenge(self.reto_id)
         self.reto_id = self.reto = None
+
+    @property
+    def pide_evidencia(self) -> bool:
+        return self.incluir_video or self.incluir_fotogramas or self.incluir_rostro_ine
+
+    def borrar_evidencia(self) -> None:
+        if self.evidencia is not None:
+            evidencia.borrar(UPLOAD_DIR, self.id)
+        self.evidencia = None
 
 
 _sesiones: dict[str, Sesion] = {}
@@ -130,6 +143,7 @@ def _guardar_memoria(s: Sesion) -> None:
 
 
 def _quitar_memoria(s: Sesion) -> None:
+    s.borrar_evidencia()
     _sesiones.pop(s.id, None)
     _por_token.pop(s.token, None)
 
@@ -260,6 +274,7 @@ def _sesion_por_token(token: str) -> Sesion:
 async def _terminar_sin_resultado(s: Sesion, estado: str) -> None:
     """Expirada o cancelada: se descarta la INE y se avisa al proyecto (sin reporte, un intento)."""
     s.olvidar_biometria()
+    s.borrar_evidencia()  # sus ligas nunca se entregaron
     s.estado = estado
     s.finalizada = ahora()
     s.olvidar_en = ahora() + timedelta(minutes=RECORDAR_MINUTOS)
@@ -284,16 +299,14 @@ async def finalizar(s: Sesion) -> None:
         except Exception:
             # El reporte completo va de todos modos; un resumen roto no debe frenar la entrega.
             logger.exception("No se pudo armar el resumen de la sesion %s", s.id)
-    # Si se pidio evidencia el envio siempre es multipart, aunque no se haya podido extraer.
-    archivos = (s.evidencia or []) if s.incluir_video or s.incluir_fotogramas else None
     datos = {
         "sesion": {**vista(s), "estado": "completada", "url_captura": None, "finalizada": _iso(finalizada)},
         "resumen": resumen,
         "resultado": s.informe,
         "intentos": await _intentos_de(s.id),
-        "evidencia": evidencia.describir(s.intentos, archivos) if archivos is not None else None,
+        "evidencia": _evidencia_publica(s) if s.pide_evidencia else None,
     }
-    resultado = await entrega.enviar(s.webhook_url, s.webhook_secreto, "sesion.completada", datos, archivos=archivos)
+    resultado = await entrega.enviar(s.webhook_url, s.webhook_secreto, "sesion.completada", datos)
     s.entrega = {k: resultado[k] for k in ("ok", "codigo", "error", "intentos", "id")}
     if resultado["ok"]:
         s.olvidar_biometria()
@@ -314,15 +327,17 @@ async def _procesar(s: Sesion, video_path: str, reto: dict) -> None:
     try:
         async with _procesamiento:
             informe = await analyze_video(video_path, s.id_emb, reto["phrase"], s.umbral_rostro, reto, t0)
-        # Solo el intento que decide la sesion: los anteriores no se entregan.
-        final = bool(informe and informe["result"]["approved"]) or s.intentos >= s.max_intentos
-        if final and (s.incluir_video or s.incluir_fotogramas):
-            try:
-                datos_evidencia = await asyncio.to_thread(
-                    evidencia.armar, video_path, s.incluir_video, s.incluir_fotogramas
-                )
-            except Exception:
-                logger.exception("No se pudo armar la evidencia de la sesion %s", s.id)
+            # Solo el intento que decide la sesion: los anteriores no se entregan.
+            final = bool(informe and informe["result"]["approved"]) or s.intentos >= s.max_intentos
+            if final and s.pide_evidencia:
+                try:
+                    datos_evidencia = await asyncio.to_thread(
+                        evidencia.guardar, UPLOAD_DIR, s.id, video_path, s.incluir_video,
+                        s.incluir_fotogramas, s.rostro_ine if s.incluir_rostro_ine else None,
+                    )
+                except Exception:
+                    logger.exception("No se pudo armar la evidencia de la sesion %s", s.id)
+                    evidencia.borrar(UPLOAD_DIR, s.id)
     except Exception:
         logger.exception("Fallo el analisis de la sesion %s", s.id)
     finally:
@@ -333,6 +348,8 @@ async def _procesar(s: Sesion, video_path: str, reto: dict) -> None:
 
     async with s.lock:
         if s.estado != "procesando":  # cancelada o expirada mientras se analizaba
+            if datos_evidencia is not None:
+                evidencia.borrar(UPLOAD_DIR, s.id)
             return
         aprobado = bool(informe and informe["result"]["approved"])
         s.checks_fallidos = informe["result"]["failed_checks"] if informe else ["internal.analysis_error"]
@@ -341,7 +358,9 @@ async def _procesar(s: Sesion, video_path: str, reto: dict) -> None:
         s.motivos = user_reasons(informe)
         if aprobado or s.intentos >= s.max_intentos:
             s.informe = informe
-            s.evidencia = datos_evidencia
+            if datos_evidencia is not None:
+                s.evidencia = datos_evidencia
+                s.evidencia_expira = ahora() + timedelta(minutes=settings.evidence_minutes)
             await finalizar(s)
             return
         s.estado = "pendiente"
@@ -355,12 +374,15 @@ async def mantenimiento() -> None:
             async with s.lock:
                 if s.estado in ACTIVOS and s.estado != "procesando":
                     await _terminar_sin_resultado(s, "expirada")
-        elif s.estado in TERMINADOS and s.olvidar_en and s.olvidar_en < ahora():
+        elif s.estado in TERMINADOS and s.olvidar_en and s.olvidar_en < ahora() and s.evidencia is None:
             _quitar_memoria(s)
+        if s.evidencia is not None and s.evidencia_expira and s.evidencia_expira < ahora():
+            s.borrar_evidencia()
 
 
 async def recuperar_al_arrancar() -> None:
     """Sesiones activas de antes de un reinicio: su INE estaba solo en memoria, no se pueden terminar."""
+    evidencia.borrar_todo(UPLOAD_DIR)  # sus ligas ya no tienen sesion en memoria
     rows = await db.pool().fetch(
         "UPDATE sesiones SET estado = 'expirada', finalizada = now() WHERE estado = ANY($1::text[]) RETURNING *",
         [*ACTIVOS, "entregando"],
@@ -434,8 +456,9 @@ async def crear_sesion(
     logo: UploadFile | None = File(None, description="Logo para la pantalla (PNG, JPEG o WEBP, max 1 MB)."),
     color_primario: str | None = Form(None, description="Hexadecimal, ej. #1B56D6: botones y paso actual."),
     color_secundario: str | None = Form(None, description="Hexadecimal: pasos completados y carga."),
-    incluir_video: bool = Form(False, description="El webhook (multipart) trae el video del intento final. No se guarda."),
-    incluir_fotogramas: bool = Form(False, description="El webhook (multipart) trae 5 fotogramas JPEG del intento final. No se guardan."),
+    incluir_video: bool = Form(False, description="El webhook trae una liga temporal al video (mp4) del intento final."),
+    incluir_fotogramas: bool = Form(False, description="El webhook trae ligas a 3 fotogramas JPEG de frente del intento final."),
+    incluir_rostro_ine: bool = Form(False, description="El webhook trae una liga al recorte de la cara de la INE."),
     proyecto: dict = Depends(require_project),
 ):
     session_limiter(request)
@@ -453,10 +476,14 @@ async def crear_sesion(
 
     # La cara de la INE se revisa ya: no tiene caso mandar al usuario a grabar
     # si no se va a poder comparar. La imagen se descarta aqui mismo.
+    np_ine = await _leer_ine(ine_imagen)
     try:
-        id_emb = await embed_id_image(await _leer_ine(ine_imagen))
+        id_emb = await embed_id_image(np_ine)
     except CheckError as exc:
         raise HTTPException(status_code=422, detail="No se detectó un rostro en ine_imagen.") from exc
+    # Solo el recorte de la cara, y solo si se pidio: el resto de la INE se descarta.
+    rostro_ine = await asyncio.to_thread(evidencia.recorte_rostro, np_ine) if incluir_rostro_ine else None
+    del np_ine
 
     s = Sesion(
         id="ses_" + uuid.uuid4().hex,
@@ -481,6 +508,8 @@ async def crear_sesion(
         logo=datos_logo,
         incluir_video=incluir_video,
         incluir_fotogramas=incluir_fotogramas,
+        incluir_rostro_ine=incluir_rostro_ine,
+        rostro_ine=rostro_ine,
     )
     await _persistir(s)
     _guardar_memoria(s)
@@ -519,6 +548,69 @@ async def cancelar(sesion_id: str, proyecto: dict = Depends(require_project)):
             raise HTTPException(status_code=409, detail=f"La sesión ya está {s.estado}.")
         await _terminar_sin_resultado(s, "cancelada")
     return vista(s)
+
+
+# ---------------------------------------------------------------- evidencia (ligas temporales)
+
+def _evidencia_publica(s: Sesion) -> dict:
+    """El bloque `evidencia` del webhook: ligas, no los archivos."""
+    archivos = s.evidencia or {}
+    base = f"{s.url_base}/api/v1/sesiones/{s.id}/evidencia/"
+
+    def liga(nombre: str) -> dict:
+        a = archivos[nombre]
+        return {"url": base + nombre, "tipo": a["tipo"], "bytes": a["bytes"]}
+
+    return {
+        "intento": s.intentos,
+        "expira": _iso(s.evidencia_expira) if s.evidencia is not None else None,
+        "video": liga("video") if "video" in archivos else None,
+        "fotogramas": [
+            {"orden": a["orden"], "segundo": a["segundo"], "de_frente": a["de_frente"], **liga(nombre)}
+            for nombre, a in archivos.items() if nombre.startswith("fotograma/")
+        ],
+        "rostro_ine": liga("rostro-ine") if "rostro-ine" in archivos else None,
+    }
+
+
+def _evidencia_de(sesion_id: str, proyecto: dict) -> Sesion:
+    s = _sesiones.get(sesion_id)
+    if not s or s.proyecto_id != proyecto["id"]:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+    if s.evidencia is None:
+        raise HTTPException(status_code=410, detail="La evidencia ya no está disponible: venció o se borró.")
+    return s
+
+
+def _descargar(sesion_id: str, nombre: str, proyecto: dict) -> FileResponse:
+    s = _evidencia_de(sesion_id, proyecto)
+    a = s.evidencia.get(nombre)
+    if not a:
+        raise HTTPException(status_code=404, detail="Ese archivo no forma parte de la evidencia.")
+    descarga = f"{s.id}_{os.path.basename(a['archivo'])}"
+    return FileResponse(a["archivo"], media_type=a["tipo"], filename=descarga,
+                        headers={"Cache-Control": "no-store"})
+
+
+@api.get("/{sesion_id}/evidencia/video", summary="Descargar el video del intento final")
+async def evidencia_video(sesion_id: str, proyecto: dict = Depends(require_project)):
+    return _descargar(sesion_id, "video", proyecto)
+
+
+@api.get("/{sesion_id}/evidencia/fotograma/{orden}", summary="Descargar un fotograma del intento final")
+async def evidencia_fotograma(sesion_id: str, orden: int, proyecto: dict = Depends(require_project)):
+    return _descargar(sesion_id, f"fotograma/{orden}", proyecto)
+
+
+@api.get("/{sesion_id}/evidencia/rostro-ine", summary="Descargar el recorte de la cara de la INE")
+async def evidencia_rostro_ine(sesion_id: str, proyecto: dict = Depends(require_project)):
+    return _descargar(sesion_id, "rostro-ine", proyecto)
+
+
+@api.delete("/{sesion_id}/evidencia", status_code=204, summary="Borrar la evidencia ya descargada")
+async def borrar_evidencia(sesion_id: str, proyecto: dict = Depends(require_project)):
+    _evidencia_de(sesion_id, proyecto).borrar_evidencia()
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------- API de la pagina del usuario (por token)

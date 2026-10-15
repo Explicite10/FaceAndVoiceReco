@@ -5,10 +5,6 @@ Cabeceras (mismo esquema que el servicio de huellas):
     X-Vida-Entrega: id unico del evento (para ignorar duplicados)
     X-Vida-Firma:   t=<unix>,v1=<hex HMAC-SHA256(webhook_secreto, "<t>." + cuerpo_crudo)>
 
-Si la sesion pidio video o fotogramas, el POST es multipart/form-data: la parte
-"evento" (evento.json) lleva el mismo JSON y es lo que se firma; los demas
-archivos van en binario y el JSON trae el SHA-256 de cada uno.
-
 Solo una respuesta 2xx confirma que el proyecto lo guardo; si no, se reintenta
 un par de veces al momento.
 """
@@ -52,12 +48,8 @@ def verificar(secreto: str, cabecera: str, cuerpo: bytes, tolerancia: int = TOLE
     return hmac.compare_digest(firmar(secreto, t, cuerpo), partes.get("v1", ""))
 
 
-async def enviar(url: str, secreto: str, evento: str, datos: dict, reintentos: int | None = None,
-                 archivos: list[dict] | None = None) -> dict:
-    """Envia y espera la confirmacion. Devuelve {ok, codigo, error, intentos, id}.
-
-    Con `archivos` ([{campo, nombre, tipo, datos}]) el envio es multipart.
-    """
+async def enviar(url: str, secreto: str, evento: str, datos: dict, reintentos: int | None = None) -> dict:
+    """Envia y espera la confirmacion. Devuelve {ok, codigo, error, intentos, id}."""
     reintentos = settings.delivery_retries if reintentos is None else reintentos
     cuerpo_evento = {
         "id": "evt_" + uuid.uuid4().hex,
@@ -75,18 +67,14 @@ async def enviar(url: str, secreto: str, evento: str, datos: dict, reintentos: i
             estado["intentos"] = intento + 1
             # Se firma en cada intento: un reintento tardio no debe caer fuera de la tolerancia.
             headers = {
+                "Content-Type": "application/json",
                 "User-Agent": "prueba-de-vida/1.0",
                 "X-Vida-Evento": evento,
                 "X-Vida-Entrega": cuerpo_evento["id"],
                 "X-Vida-Firma": cabecera_firma(secreto, cuerpo),
             }
             try:
-                if archivos is None:
-                    r = await cliente.post(url, content=cuerpo, headers={**headers, "Content-Type": "application/json"})
-                else:
-                    partes = [("evento", ("evento.json", cuerpo, "application/json"))]
-                    partes += [(a["campo"], (a["nombre"], a["datos"], a["tipo"])) for a in archivos]
-                    r = await cliente.post(url, files=partes, headers=headers)
+                r = await cliente.post(url, content=cuerpo, headers=headers)
                 estado["codigo"] = r.status_code
                 if 200 <= r.status_code < 300:
                     estado.update(ok=True, error=None)

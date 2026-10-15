@@ -1,87 +1,187 @@
-"""Evidencia del intento final para el proyecto: el video y algunos fotogramas.
+"""Evidencia del intento final para el proyecto: video, fotogramas y cara de la INE.
 
-Solo si el proyecto la pide al crear la sesion. No se guarda en disco ni en la
-base: vive en memoria hasta que el webhook confirma la entrega (o vence la sesion).
-Viaja en binario, como archivos de un webhook multipart (ver entrega.py).
+Solo si el proyecto la pide al crear la sesion. El webhook trae ligas temporales
+y el proyecto descarga los archivos con su X-API-Key. Viven en un directorio
+temporal del contenedor hasta que vencen (EVIDENCE_MINUTES) o el proyecto los
+borra; al reiniciar el servicio se borran todos. Nunca pasan a la base.
 """
-import hashlib
+import logging
 import os
+import shutil
+import subprocess
 
 import cv2
+import numpy as np
 
-FOTOGRAMAS = 5
-CALIDAD_JPEG = 85
+from app.services.face_engine import detect_faces, pick_best_face
+from app.services.image_quality import sharpness
+
+logger = logging.getLogger("uvicorn.error")
+
+FOTOGRAMAS = 3
+CALIDAD_JPEG = 90
+# Pose de frente: nariz centrada entre los ojos y ojos nivelados, como fraccion
+# de la distancia entre ojos (0 = de frente). 0.15 son unos 10-12 grados.
+_MAX_GIRO = 0.15
+_MAX_INCLINACION = 0.15
+_PASO = 3  # se revisa uno de cada 3 cuadros (~10 por segundo)
 _TIPOS_VIDEO = {".webm": "video/webm", ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
                 ".mkv": "video/x-matroska", ".avi": "video/x-msvideo"}
-_EXTENSIONES = {"video/webm": "webm", "video/mp4": "mp4", "video/quicktime": "mov", "video/x-matroska": "mkv",
-                "video/x-msvideo": "avi", "image/jpeg": "jpg"}
 
 
-def _archivo(campo: str, tipo: str, datos: bytes, **extra) -> dict:
-    return {"campo": campo, "nombre": f"{campo}.{_EXTENSIONES.get(tipo, 'bin')}", "tipo": tipo, "datos": datos, **extra}
+def directorio(base: str, sesion_id: str) -> str:
+    return os.path.join(base, "evidencia", sesion_id)
 
 
-def leer_video(path: str) -> dict:
-    with open(path, "rb") as f:
-        datos = f.read()
-    tipo = _TIPOS_VIDEO.get(os.path.splitext(path)[1].lower(), "application/octet-stream")
-    return _archivo("video", tipo, datos)
+def borrar(base: str, sesion_id: str) -> None:
+    shutil.rmtree(directorio(base, sesion_id), ignore_errors=True)
 
 
-def extraer_fotogramas(path: str, cantidad: int = FOTOGRAMAS) -> list[dict]:
-    """Cuadros completos repartidos a lo largo del video, en JPEG.
+def borrar_todo(base: str) -> None:
+    shutil.rmtree(os.path.join(base, "evidencia"), ignore_errors=True)
 
-    Se cuentan los cuadros leyendo el video: los .webm de Chrome no traen la
-    duracion en los metadatos, asi que CAP_PROP_FRAME_COUNT no sirve.
+
+def _jpeg(np_bgr: np.ndarray) -> bytes:
+    ok, datos = cv2.imencode(".jpg", np_bgr, [cv2.IMWRITE_JPEG_QUALITY, CALIDAD_JPEG])
+    if not ok:
+        raise ValueError("No se pudo codificar el JPEG")
+    return datos.tobytes()
+
+
+def a_mp4(origen: str, destino: str) -> bool:
+    """H.264 + AAC con faststart, lo que reproduce cualquier navegador o servicio."""
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", origen,
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+             "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", destino],
+            capture_output=True, timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("No se pudo convertir el video a mp4: %s", exc)
+        return False
+    if r.returncode != 0:
+        logger.warning("ffmpeg fallo al convertir a mp4: %s", r.stderr.decode(errors="replace")[:300])
+        return False
+    return True
+
+
+def _giro(row: np.ndarray) -> tuple[float, float]:
+    """(giro, inclinacion) con los 5 puntos de YuNet: ojo der., ojo izq., nariz, boca.
+
+    El giro se mide sobre la linea de los ojos y no sobre el eje x de la imagen:
+    con la cabeza ladeada, la nariz se corre en x aunque la cara este de frente.
+    """
+    ojo_d, ojo_i, nariz = row[4:6], row[6:8], row[8:10]
+    ojos = ojo_i - ojo_d
+    distancia = float(np.linalg.norm(ojos)) + 1e-6
+    centro = (ojo_d + ojo_i) / 2
+    giro = abs(float(np.dot(nariz - centro, ojos))) / distancia**2
+    return giro, abs(float(ojos[1])) / distancia
+
+
+def fotogramas_de_frente(path: str, cantidad: int = FOTOGRAMAS) -> list[dict]:
+    """El mejor cuadro de frente de cada tramo del video, completo y en JPEG.
+
+    En cada tramo gana el cuadro con una sola cara mas de frente y derecha, entre
+    los razonablemente nitidos; si en un tramo nunca miro de frente (estaba
+    haciendo un gesto), el menos girado.
     """
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         return []
+    candidatos = []  # (indice, de_frente, giro, nitidez, segundo, jpeg, inclinacion)
+    indice = 0
     try:
-        total = 0
         while cap.grab():
-            total += 1
-    finally:
-        cap.release()
-    if total == 0:
-        return []
-
-    # Centro de cada tramo: evita el primer cuadro (suele salir oscuro) y el ultimo.
-    elegidos = sorted({min(total - 1, int(total * (k + 0.5) / cantidad)) for k in range(cantidad)})
-    fotogramas = []
-    cap = cv2.VideoCapture(path)
-    try:
-        indice = -1
-        for objetivo in elegidos:
-            while indice < objetivo:
-                if not cap.grab():
-                    return fotogramas
-                indice += 1
+            indice += 1
+            if indice % _PASO:
+                continue
             ok, cuadro = cap.retrieve()
             if not ok:
                 continue
-            ok, jpeg = cv2.imencode(".jpg", cuadro, [cv2.IMWRITE_JPEG_QUALITY, CALIDAD_JPEG])
-            if ok:
-                segundo = round(cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0, 2)
-                fotogramas.append(_archivo(f"fotograma_{len(fotogramas) + 1}", "image/jpeg", jpeg.tobytes(),
-                                           segundo=segundo))
+            caras = detect_faces(cv2.cvtColor(cuadro, cv2.COLOR_BGR2RGB))
+            if len(caras) != 1:
+                continue
+            cara = caras[0]
+            giro, inclinacion = _giro(cara.row)
+            x1, y1, x2, y2 = (int(v) for v in cara.bbox)
+            gris = cv2.cvtColor(cuadro[max(0, y1):max(0, y2), max(0, x1):max(0, x2)], cv2.COLOR_BGR2GRAY)
+            if gris.size == 0:
+                continue
+            candidatos.append((indice, giro <= _MAX_GIRO and inclinacion <= _MAX_INCLINACION, giro,
+                               sharpness(gris) * cara.score, round(cap.get(cv2.CAP_PROP_POS_MSEC) / 1000, 2),
+                               _jpeg(cuadro), inclinacion))
     finally:
         cap.release()
-    return fotogramas
+
+    elegidos = []
+    for k in range(cantidad):
+        lo, hi = indice * k / cantidad, indice * (k + 1) / cantidad
+        tramo = [c for c in candidatos if lo < c[0] <= hi]
+        if not tramo:
+            continue
+        de_frente = [c for c in tramo if c[1]]
+        if de_frente:
+            # El mas derecho de los que estan razonablemente nitidos.
+            nitidez = max(c[3] for c in de_frente)
+            mejor = min((c for c in de_frente if c[3] >= nitidez * 0.5), key=lambda c: c[2] + c[6])
+        else:
+            mejor = min(tramo, key=lambda c: c[2])
+        elegidos.append({"segundo": mejor[4], "de_frente": mejor[1], "datos": mejor[5]})
+    return elegidos
 
 
-def armar(path: str, video: bool, fotogramas: bool) -> list[dict]:
-    """Archivos a entregar: [{campo, nombre, tipo, datos, segundo?}]."""
-    return ([leer_video(path)] if video else []) + (extraer_fotogramas(path) if fotogramas else [])
+def recorte_rostro(np_rgb: np.ndarray, margen: float = 0.3) -> bytes | None:
+    """La cara de la INE con un margen alrededor, en JPEG. None si no hay cara."""
+    cara = pick_best_face(detect_faces(np_rgb))
+    if cara is None:
+        return None
+    h, w = np_rgb.shape[:2]
+    x1, y1, x2, y2 = (float(v) for v in cara.bbox)
+    mx, my = (x2 - x1) * margen, (y2 - y1) * margen
+    x1, y1 = max(0, int(x1 - mx)), max(0, int(y1 - my))
+    x2, y2 = min(w, int(x2 + mx)), min(h, int(y2 + my))
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return _jpeg(cv2.cvtColor(np_rgb[y1:y2, x1:x2], cv2.COLOR_RGB2BGR))
 
 
-def describir(intento: int, archivos: list[dict]) -> dict:
-    """Lo que va en el JSON firmado: sin los bytes, con su SHA-256 para comprobarlos."""
-    return {
-        "intento": intento,
-        "archivos": [
-            {**{k: v for k, v in a.items() if k != "datos"}, "bytes": len(a["datos"]),
-             "sha256": hashlib.sha256(a["datos"]).hexdigest()}
-            for a in archivos
-        ],
-    }
+def guardar(base: str, sesion_id: str, video_path: str, video: bool, fotogramas: bool,
+            rostro_ine: bytes | None) -> dict:
+    """Escribe la evidencia y devuelve {nombre: {archivo, tipo, ...}} para servirla.
+
+    nombres: "video", "fotograma/1".., "rostro-ine". El video sale en mp4; si la
+    conversion falla se entrega el original con su tipo (webm, por ejemplo).
+    """
+    carpeta = directorio(base, sesion_id)
+    os.makedirs(carpeta, exist_ok=True)
+    archivos: dict[str, dict] = {}
+
+    if video:
+        destino = os.path.join(carpeta, "video.mp4")
+        if a_mp4(video_path, destino):
+            archivos["video"] = {"archivo": destino, "tipo": "video/mp4"}
+        else:
+            ext = os.path.splitext(video_path)[1].lower()
+            destino = os.path.join(carpeta, "video" + ext)
+            shutil.copyfile(video_path, destino)
+            archivos["video"] = {"archivo": destino, "tipo": _TIPOS_VIDEO.get(ext, "application/octet-stream")}
+
+    if fotogramas:
+        for orden, f in enumerate(fotogramas_de_frente(video_path), start=1):
+            destino = os.path.join(carpeta, f"fotograma_{orden}.jpg")
+            with open(destino, "wb") as fh:
+                fh.write(f["datos"])
+            archivos[f"fotograma/{orden}"] = {"archivo": destino, "tipo": "image/jpeg", "orden": orden,
+                                              "segundo": f["segundo"], "de_frente": f["de_frente"]}
+
+    if rostro_ine:
+        destino = os.path.join(carpeta, "rostro_ine.jpg")
+        with open(destino, "wb") as fh:
+            fh.write(rostro_ine)
+        archivos["rostro-ine"] = {"archivo": destino, "tipo": "image/jpeg"}
+
+    for a in archivos.values():
+        a["bytes"] = os.path.getsize(a["archivo"])
+    return archivos
