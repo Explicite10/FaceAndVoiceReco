@@ -85,7 +85,11 @@ class Settings(BaseModel):
     # Sincronia labios-voz (MediaPipe). Valores PROVISIONALES: calibrar con
     # videos reales (lectura normal vs. pantalla, foto o audio doblado).
     lip_min_tracked_ratio: float = 0.6     # cara visible en al menos este % de cuadros
-    lip_motion_min: float = 0.004          # movimiento medio de la boca al hablar
+    # Movimiento medio de la boca al hablar (apertura / alto de la cara, por cuadro).
+    # Depende de la distancia y la camara: una persona real dio 0.003-0.005 y una
+    # foto ronda 0.0003. Por eso pesa mas la comparacion contra el silencio.
+    lip_motion_min: float = 0.0015
+    lip_motion_ratio_min: float = 3.0      # al hablar, al menos 3x lo que se mueve en silencio
     lip_corr_min: float = 0.2              # correlacion boca vs. energia de la voz
 
     # ---------- Reto (challenge-response) ----------
@@ -114,9 +118,27 @@ class Settings(BaseModel):
     photo_min_brightness: float = 50.0     # brillo medio de la cara (0-255)
     photo_max_brightness: float = 210.0
 
+    # ---------- Sesiones para proyectos autorizados ----------
+    # Proyectos y resumen de sesiones (sin biometria). Sin DATABASE_URL la API
+    # directa sigue funcionando, pero no hay sesiones.
+    database_url: str | None = os.getenv("DATABASE_URL") or None
+    # URL publica con la que el usuario abre la captura; si no, la de la peticion.
+    public_url: str | None = (os.getenv("PUBLIC_URL") or "").rstrip("/") or None
+    session_minutes: int = int(os.getenv("SESSION_MINUTES", "30"))
+    session_max_attempts: int = int(os.getenv("SESSION_MAX_ATTEMPTS", "3"))
+    # Analisis de video simultaneos: cada uno ocupa varios nucleos por un rato.
+    max_concurrent_verifications: int = int(os.getenv("MAX_CONCURRENT_VERIFICATIONS", "1"))
+    delivery_timeout_sec: float = float(os.getenv("DELIVERY_TIMEOUT_SEC", "20"))
+    delivery_retries: int = int(os.getenv("DELIVERY_RETRIES", "2"))
+    # Acepta webhook_url / url_retorno con http:// (solo desarrollo local).
+    allow_http_urls: bool = os.getenv("ALLOW_HTTP_URLS", "false").lower() in ("1", "true", "yes")
+    # Pagina de prueba completa en "/" y API directa abierta sin llaves, solo
+    # para desarrollo. Apagado por defecto: olvidar la variable no abre la API.
+    demo: bool = os.getenv("DEMO", "false").lower() in ("1", "true", "yes")
+
     # ---------- Acceso ----------
-    # Una llave por proyecto que consume la API (header X-API-Key). Vacio =
-    # sin autenticacion, solo para desarrollo: al arrancar se advierte en el log.
+    # Llaves fijas por variable de entorno (opcional). Los proyectos normales se
+    # dan de alta en la base de datos con `python -m app.cli`.
     api_keys: dict[str, str] = _parse_api_keys(os.getenv("API_KEYS", ""))
     # Origenes de navegador permitidos, p. ej. "https://app1.com,https://app2.com".
     # Solo hace falta si un frontend llama directo a la API; vacio = sin CORS.

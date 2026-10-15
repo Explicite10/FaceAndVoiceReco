@@ -91,12 +91,34 @@ def analyze_lip_sync(video_path: str, track: dict) -> dict:
         lag_ms=int(round(lag * 1000 / TRACK_FPS)) if corr > -1.0 else None,
     )
 
-    if result["tracked_ratio"] < settings.lip_min_tracked_ratio:
-        result["reason"], result["reason_code"] = "no se ve la cara la mayor parte del video", "face_not_tracked"
-    elif motion_speech is None or motion_speech < settings.lip_motion_min:
-        result["reason"], result["reason_code"] = "la boca no se mueve al hablar", "lips_not_moving"
-    elif corr < settings.lip_corr_min:
-        result["reason"], result["reason_code"] = "el movimiento de la boca no coincide con la voz", "lips_out_of_sync"
-    else:
-        result["passed"] = True
+    code = lip_decision(result["tracked_ratio"], motion_speech, motion_silence, corr)
+    result["reason_code"] = code
+    result["reason"] = _REASONS.get(code)
+    result["passed"] = code is None
     return result
+
+
+_REASONS = {
+    "face_not_tracked": "no se ve la cara la mayor parte del video",
+    "lips_not_moving": "la boca no se mueve al hablar",
+    "lips_out_of_sync": "el movimiento de la boca no coincide con la voz",
+}
+
+
+def lip_decision(tracked_ratio: float, motion_speech: float | None, motion_silence: float | None, corr: float) -> str | None:
+    """Codigo de falla, o None si pasa.
+
+    La boca debe moverse al hablar en relacion a la propia persona: al menos
+    lip_motion_ratio_min veces lo que se mueve en silencio. El minimo absoluto
+    es bajo a proposito, solo para descartar una imagen quieta: el valor
+    absoluto cambia mucho con la distancia a la camara y su resolucion.
+    """
+    if tracked_ratio < settings.lip_min_tracked_ratio:
+        return "face_not_tracked"
+    if motion_speech is None or motion_speech < settings.lip_motion_min:
+        return "lips_not_moving"
+    if motion_silence is not None and motion_speech < settings.lip_motion_ratio_min * motion_silence:
+        return "lips_not_moving"
+    if corr < settings.lip_corr_min:
+        return "lips_out_of_sync"
+    return None

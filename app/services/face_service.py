@@ -76,8 +76,16 @@ def percent_to_similarity(percent: float, mid: float, k: float) -> float:
     return round(min(1.0, mid + math.log(p / (1.0 - p)) / k), 4)
 
 
+def id_embedding(np_id: np.ndarray) -> np.ndarray:
+    """Vector de la cara de la identificacion (128 numeros). Falla si no hay cara."""
+    id_face = pick_best_face(detect_faces(np_id))
+    if id_face is None:
+        raise CheckError(422, "id_face_not_found", "No se detectó rostro en la identificación.")
+    return embed(np_id, id_face)
+
+
 def compare_id_against_segments(
-    np_id: np.ndarray, segments: list[dict | None], face_stats: dict, threshold_percent: float
+    id_emb: np.ndarray, segments: list[dict | None], face_stats: dict, threshold_percent: float
 ) -> dict:
     """Compara la cara de la identificacion contra la mejor cara de cada tramo.
 
@@ -85,11 +93,6 @@ def compare_id_against_segments(
     llegan a threshold_percent: con el promedio solo, un tramo con otra persona quedaria
     escondido (0.90 + 0.90 + 0.10 promedia 0.63 y pasaria).
     """
-    id_face = pick_best_face(detect_faces(np_id))
-    if id_face is None:
-        raise CheckError(422, "id_face_not_found", "No se detectó rostro en la identificación.")
-
-    id_emb = embed(np_id, id_face)
 
     mid = settings.sim_threshold
     results = []
@@ -146,8 +149,8 @@ def compare_id_against_segments(
     }
 
 
-async def compare_image_np_and_video_path(np1: np.ndarray, video_path: str, threshold_percent: float) -> dict:
-    """Compara la identificacion contra la cara de cada tramo del video en disco."""
+async def compare_id_and_video_path(id_emb: np.ndarray, video_path: str, threshold_percent: float) -> dict:
+    """Compara la identificacion (ya convertida con id_embedding) contra cada tramo del video en disco."""
 
     try:
         segments, face_stats = await asyncio.wait_for(
@@ -171,4 +174,4 @@ async def compare_image_np_and_video_path(np1: np.ndarray, video_path: str, thre
             "No se detectó ninguna cara en el video. Prueba con mejor iluminación o rostro más cerca.",
         )
 
-    return await asyncio.to_thread(compare_id_against_segments, np1, segments, face_stats, threshold_percent)
+    return await asyncio.to_thread(compare_id_against_segments, id_emb, segments, face_stats, threshold_percent)

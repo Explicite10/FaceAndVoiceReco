@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Prueba de vida</title>
+    <link rel="stylesheet" href="/static/captura.css" />
+    {% if marca.primario or marca.secundario %}
+    <style>
+      /* Colores del proyecto: van despues de captura.css para ganar en claro y oscuro. */
+      :root {
+        {% if marca.primario %}--accent: {{ marca.primario }}; --accent-text: {{ marca.texto_primario }};{% endif %}
+        {% if marca.secundario %}--accent-2: {{ marca.secundario }};{% endif %}
+      }
+    </style>
+    {% endif %}
+  </head>
+  <body data-min="{{ min_duration_sec }}" data-max="{{ max_duration_sec }}"
+        data-turn="{{ turn_offset }}" data-blink-closed="{{ blink_closed }}" data-blink-open="{{ blink_open }}">
+    <main class="app">
+      {% if marca.logo_url %}
+      <header class="brand"><img src="{{ marca.logo_url }}" alt="{{ marca.proyecto }}" /></header>
+      {% endif %}
+
+      <section id="sCargando" class="screen center">
+        <div class="spinner" aria-hidden="true"></div>
+      </section>
+
+      <section id="sInicio" class="screen" hidden>
+        <p class="eyebrow" id="proyecto"></p>
+        <h1>Verifiquemos que eres tú</h1>
+        <p class="lead">Te pediremos tres movimientos sencillos y leer una frase en voz alta. Toma menos de un minuto.</p>
+        <ul class="tips">
+          <li>Busca buena luz</li>
+          <li>Rostro descubierto</li>
+          <li>Lugar sin ruido</li>
+        </ul>
+        <div class="notice" id="aviso" hidden></div>
+        <div class="actions">
+          <button class="btn primary" id="btnComenzar">Comenzar</button>
+          <p class="fine">Al continuar aceptas que se use tu imagen y tu voz solo para verificar tu identidad.</p>
+        </div>
+      </section>
+
+      <section id="sCamara" class="screen camera" hidden>
+        <div class="cam-layout">
+          <!-- La vista previa conserva la proporcion real de la camara: se ve todo lo que se analiza. -->
+          <div class="stage" id="stage">
+            <video id="video" autoplay muted playsinline></video>
+            <div class="rec" id="rec" hidden><span class="dot"></span><span id="recTiempo">0:00</span></div>
+            <div class="cam-hint" id="camAviso">Mantén todo tu rostro a la vista</div>
+            <div class="burst" id="bien" hidden aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            </div>
+          </div>
+
+          <aside class="panel">
+            <p class="step-count" id="pasoN">Preparando la cámara</p>
+            <ol class="steps" id="progreso" aria-label="Pasos"></ol>
+
+            <div class="step-card" aria-live="polite">
+              <div class="step-icon" id="pasoIcono" aria-hidden="true"></div>
+              <div class="step-body">
+                <p class="step-text" id="instruccion">Mira de frente a la cámara</p>
+                <p class="hint" id="pista">La grabación empieza sola cuando te veamos.</p>
+              </div>
+            </div>
+
+            <div class="phrase-card" id="fraseBox" hidden>
+              <p class="phrase-label">Lee en voz alta</p>
+              <p class="phrase" id="frase"></p>
+              <div class="countdown" aria-hidden="true"><span id="cuenta"></span></div>
+            </div>
+
+            <button class="btn primary" id="btnListo" hidden>Ya terminé de leer</button>
+          </aside>
+        </div>
+      </section>
+
+      <section id="sProcesando" class="screen center" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <h2>Verificando…</h2>
+        <p class="lead">Esto puede tardar hasta un minuto. No cierres esta ventana.</p>
+      </section>
+
+      <section id="sResultado" class="screen center" hidden>
+        <div class="badge" id="icono" aria-hidden="true"></div>
+        <h2 id="resTitulo"></h2>
+        <ul class="reasons" id="motivos" hidden></ul>
+        <p class="lead" id="resTexto"></p>
+        <div class="actions">
+          <button class="btn primary" id="btnAccion" hidden></button>
+        </div>
+      </section>
+
+    </main>
+    <script type="module" src="/static/captura.js"></script>
+  </body>
+</html>

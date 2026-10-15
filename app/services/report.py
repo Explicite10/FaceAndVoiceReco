@@ -384,6 +384,100 @@ def build_report(
     }
 
 
+# ------------------------------------------- resumen para proyectos (sesiones)
+# Por que fallo, en palabras del usuario y con como corregirlo. Una entrada por
+# codigo de check fallido; el orden sigue al de los grupos del reporte.
+_MOTIVOS = {
+    "video_face_not_found": "No se vio tu rostro en el video. Acércate a la cámara y busca buena luz.",
+    "face_missing_in_segment": "Tu rostro no se vio durante todo el video. Mantente frente a la cámara.",
+    "face_mismatch": "Tu rostro no coincide con la foto de la identificación.",
+    "multiple_faces_detected": "Se detectó más de una persona. Asegúrate de estar solo frente a la cámara.",
+    "audio_missing": "No se grabó el audio. Revisa el permiso del micrófono.",
+    "audio_duration_invalid": "La grabación fue muy corta o muy larga.",
+    "no_speech_detected": "No se escuchó tu voz. Habla más fuerte y cerca del micrófono.",
+    "speech_low_confidence": "No se entendió la voz. Busca un lugar sin ruido.",
+    "phrase_mismatch": "La frase no coincide con la que se pidió. Léela completa, en voz alta y clara.",
+    "spoof_detected": "Parece una foto o una pantalla. Debes estar tú frente a la cámara.",
+    "face_not_tracked": "Tu rostro salió de la imagen gran parte del tiempo. Mantente frente a la cámara.",
+    "lips_not_moving": "No se vio que movieras los labios al hablar. Lee la frase mirando a la cámara.",
+    "lips_out_of_sync": "El movimiento de tus labios no coincidió con tu voz.",
+    "head_turn_not_detected": "No se detectó el giro de cabeza. Gira un poco más cuando se te pida.",
+    "blink_not_detected": "No se detectó el parpadeo. Cierra bien los ojos un momento.",
+    "hand_raise_not_detected": "No se detectó la mano alzada. Muéstrala a un lado de tu cara.",
+    "gesture_order_mismatch": "Los movimientos no se hicieron en el orden indicado.",
+}
+MOTIVO_GENERICO = "No pudimos verificar tu identidad. Intenta de nuevo con buena luz, de frente a la cámara."
+
+
+def user_reasons(report: dict | None) -> list[str]:
+    """Motivos del rechazo para mostrar al usuario. Vacio si se aprobo."""
+    if report is None:
+        return ["Ocurrió un error al analizar el video. Intenta de nuevo."]
+    if report["result"]["approved"]:
+        return []
+    motivos: list[str] = []
+    for grupo in ("face", "voice", "liveness", "challenge"):
+        for check in report["checks"].get(grupo, {}).values():
+            texto = _MOTIVOS.get(check["code"]) if check["status"] == "failed" else None
+            if texto and texto not in motivos:
+                motivos.append(texto)
+    return motivos or [MOTIVO_GENERICO]
+
+
+def _flag(check: dict | None) -> bool | None:
+    """passed -> True, failed -> False, not_evaluated o ausente -> None."""
+    if not check or check["status"] == "not_evaluated":
+        return None
+    return check["status"] == "passed"
+
+
+def _pct(x: float | None) -> float | None:
+    return None if x is None else round(x * 100, 1)
+
+
+def build_summary(report: dict) -> dict:
+    """Banderas y porcentajes del reporte, en un formato corto para los proyectos.
+
+    Cada bandera es true (paso), false (fallo) o null (no se pudo evaluar
+    porque fallo un paso previo). El detalle completo sigue en el reporte.
+    """
+    details = report["details"]
+    checks = {g: report["checks"].get(g, {}) for g in ("face", "voice", "liveness", "challenge")}
+    face, voice, live, chal = details.get("face"), details.get("voice"), details.get("liveness"), details.get("challenge")
+    segments = [s["similarity_percent"] for s in (face["segments"] if face else []) if s["face_detected"]]
+    return {
+        "aprobada": report["result"]["approved"],
+        "checks_fallidos": report["result"]["failed_checks"],
+        "motivos": user_reasons(report),
+        "rostro": {
+            "coincide": _flag(checks["face"].get("face_match")),
+            "similitud_porcentaje": face["similarity"]["average_percent"] if face else None,
+            "similitud_minima_porcentaje": min(segments) if segments else None,
+            "umbral_porcentaje": face["similarity"]["threshold_percent"] if face else None,
+            "una_sola_persona": _flag(checks["face"].get("single_face")),
+        },
+        "frase": {
+            "coincide": _flag(checks["voice"].get("phrase_match")),
+            "coincidencia_porcentaje": voice["phrase_match"]["match_percent"] if voice else None,
+            "umbral_porcentaje": voice["phrase_match"]["threshold_percent"] if voice else None,
+            "esperada": voice["expected_phrase"] if voice else None,
+            "transcripcion": voice["transcript"] if voice else None,
+        },
+        "vida": {
+            "persona_real": _flag(checks["liveness"].get("anti_spoofing")),
+            "probabilidad_real_porcentaje": _pct(live["anti_spoofing"]["real_probability"]) if live else None,
+            "umbral_porcentaje": _pct(live["anti_spoofing"]["threshold_probability"]) if live else None,
+            "labios_sincronizados": _flag(checks["liveness"].get("lip_sync")),
+        },
+        "gestos": {
+            "completos": all(g["detected"] for g in chal["gestures"]) if chal else None,
+            "en_orden": _flag(checks["challenge"].get("gesture_order")),
+            "detalle": [{"gesto": g["gesture"], "detectado": g["detected"], "segundo": g["time_sec"]}
+                        for g in chal["gestures"]] if chal else [],
+        },
+    }
+
+
 # ------------------------------------------------- foto contra identificacion
 def _photo_checks(a: dict) -> dict:
     id_face, photo_face = a["id_face"], a["photo_face"]

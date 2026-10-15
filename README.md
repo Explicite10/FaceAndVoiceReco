@@ -1,7 +1,8 @@
 # FaceAndVoiceReco
 
-API de verificación de identidad contra **una foto de identificación (INE)**. Tiene dos modos:
+API de verificación de identidad contra **una foto de identificación (INE)**. Tiene tres formas de uso:
 
+- **Sesiones para proyectos autorizados (recomendado).** El backend del proyecto crea una sesión con la foto de la INE, manda al usuario a una pantalla mínima de prueba de vida y recibe el resultado en JSON por un webhook firmado. Ver [Integración para proyectos](#integración-para-proyectos-sesiones).
 - **`POST /api/verify-identity`**: con **un video corto** en el que la persona hace unos gestos al azar y lee una frase en voz alta. Es el más completo. Antes se pide un reto en `POST /api/challenge`.
 - **`POST /api/verify-photo`**: con **una foto** de la persona. Compara las caras y valida la calidad de la foto.
 
@@ -50,10 +51,15 @@ video + challenge_id ──► guardado temporal ──► 1. Voz      audio 16 
 ```
 app/
 ├── main.py                       # FastAPI + carga de modelos al arrancar
+├── db.py                         # PostgreSQL: proyectos y resumen de sesiones
+├── cli.py                        # alta y baja de proyectos (python -m app.cli)
 ├── core/config.py                # umbrales y variables de entorno
 ├── api/routes/identity.py        # POST /api/challenge, /api/verify-identity y /api/verify-photo
 ├── schemas/identity.py           # contrato de respuesta (Pydantic)
 ├── services/
+│   ├── sesiones.py               # sesiones para proyectos: API, captura y ciclo de vida
+│   ├── proyectos.py              # proyectos autorizados (API key en hash, webhook, dominios)
+│   ├── entrega.py                # webhook JSON firmado al proyecto
 │   ├── identity_verification.py  # orquesta los análisis
 │   ├── challenge.py              # retos de un solo uso (frase y gestos)
 │   ├── face_engine.py            # YuNet + SFace
@@ -72,8 +78,12 @@ app/
 │   ├── liveness.py               # prueba de vida
 │   └── report.py                 # arma la respuesta pública
 ├── assets/antispoof/             # modelos MiniFASNet incluidos en el repo
-└── templates/index.html          # página de prueba con cámara
-docker-compose.yml                # contenedor de la API con arranque automático
+├── templates/captura.html        # pantalla mínima de prueba de vida (sesiones)
+├── templates/index.html          # página de prueba completa (solo con DEMO=true)
+└── static/captura.{js,css}       # lógica y estilos de la captura
+ejemplos/proyecto_demo.py         # proyecto cliente de ejemplo (crear sesión + webhook)
+tests/test_sesiones.py            # pruebas del flujo de sesiones
+docker-compose.yml                # API + PostgreSQL con arranque automático
 .env.example                      # plantilla de configuración del servidor
 ```
 
@@ -87,8 +97,15 @@ En el servidor (Linux amd64 con Docker y el plugin `docker compose`):
 
 ```bash
 git clone <repo> && cd <repo>
-cp .env.example .env        # llenar API_KEYS, CORS_ORIGINS, etc.
+cp .env.example .env        # llenar POSTGRES_PASSWORD (obligatoria) y revisar PUBLIC_URL
 docker compose up -d --build
+```
+
+Levanta dos contenedores: `face-voice-reco` (la API) y `face-voice-reco-db` (PostgreSQL, con sus datos en el volumen `pgdata`). Después se da de alta cada proyecto autorizado:
+
+```bash
+docker compose exec api python -m app.cli crear "Créditos" \
+    --webhook https://api.creditos.com/webhooks/vida --dominios creditos.com
 ```
 
 Para que arranque solo cuando se prende el servidor, el contenedor ya tiene `restart: always` en [`docker-compose.yml`](docker-compose.yml). Solo falta que Docker arranque con el sistema (una vez):
@@ -105,14 +122,20 @@ curl http://localhost:7860/health
 docker compose logs -f api
 ```
 
-Para actualizar después de un `git pull`, se repite `docker compose up -d --build`. Los retos pendientes se pierden con el reinicio; los usuarios solo piden uno nuevo.
+Para actualizar después de un `git pull`, se repite `docker compose up -d --build`. Las sesiones a medias se pierden con el reinicio (la INE solo vive en memoria): quedan como `expiradas` y se avisa a su proyecto.
+
+Respaldo de la base:
+
+```bash
+docker compose exec db pg_dump -U vida vida > respaldo-$(date +%F).sql
+```
 
 El archivo `.env` va junto al proyecto en el servidor (no se sube a git ni entra a la imagen). [`.env.example`](.env.example) tiene todas las variables explicadas. Por ejemplo:
 
 ```
-API_KEYS=crm:LLAVE_DEL_CRM,portal:LLAVE_DEL_PORTAL
-CORS_ORIGINS=https://portal.tuempresa.com
-RATE_LIMIT_REQUESTS=20
+PUBLIC_URL=https://prueba-de-vida.buzzword.com.mx
+POSTGRES_PASSWORD=<generada con secrets.token_urlsafe>
+DEMO=false
 ```
 
 La imagen ya trae todos los modelos, así que arranca sin descargar nada. Corre con un usuario sin privilegios y tiene un `HEALTHCHECK` contra `GET /health`.
@@ -146,37 +169,205 @@ Requiere Python 3.12.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+DEMO=true uvicorn app.main:app --reload
 ```
 
 En el primer arranque se descargan los modelos de rostro y de MediaPipe a `models/` (con verificación SHA-256), y el modelo de Whisper a la caché de Hugging Face.
 
-Abre `http://localhost:8000` para usar la página de prueba con la cámara, o `http://localhost:8000/docs` para la documentación interactiva.
+Abre `http://localhost:8000` para usar la página de prueba con la cámara, o `http://localhost:8000/docs` para la documentación interactiva. Sin `DATABASE_URL` todo funciona menos las sesiones. Para tenerlas en local, con un PostgreSQL cualquiera:
+
+```bash
+DATABASE_URL=postgresql://usuario:clave@localhost:5432/vida ALLOW_HTTP_URLS=true uvicorn app.main:app --reload
+```
+
+Pruebas (necesitan un PostgreSQL de pruebas; ver el encabezado de [`tests/test_sesiones.py`](tests/test_sesiones.py)):
+
+```bash
+pip install -r requirements-dev.txt
+TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres pytest -q
+```
 
 ---
 
-## Acceso: API keys y CORS
+## Acceso: proyectos autorizados
 
-Cada proyecto que consume la API tiene su propia llave y la manda en el header `X-API-Key`:
+Solo los proyectos dados de alta pueden usar el servicio. Cada uno tiene su API key (en la base solo queda su hash), el secreto con el que se firman sus webhooks y los dominios a los que puede regresar al usuario, mandar resultados e incrustar la captura.
 
 ```bash
-curl -X POST https://tu-servidor/api/verify-photo \
-  -H "X-API-Key: LLAVE_DEL_PROYECTO" \
-  -F "id_image=@ine.jpg" \
-  -F "photo=@selfie.jpg"
+docker compose exec api python -m app.cli crear "Créditos" --webhook https://api.creditos.com/webhooks/vida --dominios creditos.com
+docker compose exec api python -m app.cli listar
+docker compose exec api python -m app.cli rotar-key prj_...        # la llave anterior deja de servir
+docker compose exec api python -m app.cli desactivar prj_...       # quita el acceso (activar lo devuelve)
+docker compose exec api python -m app.cli webhook prj_... https://nueva-url
+docker compose exec api python -m app.cli dominios prj_... creditos.com,app.creditos.com
 ```
 
-- Las llaves se configuran en `API_KEYS` como `proyecto:llave` separados por coma. Para generar una llave:
-  ```bash
-  python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-  ```
-- Sin llave o con una llave incorrecta, la API responde `401`. `GET /health` no pide llave.
-- Para dar de baja un proyecto, quita su llave de `API_KEYS` y reinicia el contenedor; los demás no se enteran.
-- El rate limit se cuenta por proyecto, así que un proyecto con mucho tráfico no le quita cupo a los demás.
-- Si `API_KEYS` está vacío, la API **no pide autenticación**. Es solo para desarrollo, y al arrancar se advierte en el log. Si `API_KEYS` está mal escrito, el contenedor no arranca en lugar de quedar abierto.
-- En Swagger (`/docs`), el botón **Authorize** permite poner la llave para probar.
+`crear` muestra la `api_key` **una sola vez**, junto con el `webhook_secreto`; ambos se guardan en el backend del proyecto. Sin `--dominios`, el proyecto puede usar cualquier dominio (solo para pruebas).
 
-**CORS** solo hace falta si el navegador de los usuarios llama directo a la API. Si llama el backend de cada proyecto, no se configura. Los orígenes permitidos van en `CORS_ORIGINS`, separados por coma. Ojo: una llave usada desde un frontend queda visible para cualquiera que abra las herramientas del navegador, así que lo recomendable es que las llamadas pasen por el backend de cada proyecto.
+La misma llave sirve para la API directa (`/api/challenge`, `/api/verify-identity`, `/api/verify-photo`) en el header `X-API-Key`. El rate limit se cuenta por proyecto. También se aceptan llaves fijas en `API_KEYS` (`nombre:llave`), útiles para pruebas internas.
+
+**`DEMO`** controla el modo de pruebas y está apagado por defecto. Con `DEMO=true` existe la página completa en `/` y, si no hay `API_KEYS`, la API directa no pide llave; es solo para desarrollo. Apagado, `/` responde 404 y todo pide la llave de un proyecto.
+
+**CORS** solo hace falta si un frontend llama directo a la API directa desde el navegador. Las sesiones no lo necesitan: el backend del proyecto llama a la API, y la captura vive en este mismo dominio. Una llave usada desde un frontend queda visible para cualquiera, así que lo recomendable es que las llamadas pasen por el backend de cada proyecto.
+
+---
+
+## Integración para proyectos (sesiones)
+
+Cada proyecto **no** copia la cámara ni el análisis: pide una sesión, manda al usuario a hacer la prueba y recibe el resultado en JSON. Es el mismo esquema que el servicio de huellas.
+
+> Para los equipos de cada proyecto hay una guía independiente del lenguaje en [`docs/INTEGRACION.md`](docs/INTEGRACION.md): qué mandar, qué reciben, cómo verificar la firma (con un ejemplo para comprobarla) y una lista de verificación.
+>
+> Para quien administra el servidor: [`docs/SERVIDOR.md`](docs/SERVIDOR.md) (despliegue, proxy HTTPS, alta de proyectos, respaldos) y [`scripts/verificar-produccion.sh`](scripts/verificar-produccion.sh) para comprobar que sin llave no se entra.
+
+```
+Backend del proyecto                    Prueba de vida                               Usuario
+1. POST /api/v1/sesiones (INE)  ─────►  revisa la cara de la INE ─► { id, url_captura }
+2. redirige a url_captura  ─────────────────────────────────────────────────────────►  gestos + frase
+                                        3. analiza; si no pasa, el usuario reintenta
+4. POST JSON firmado al webhook ◄─────  evento + sesión + reporte completo
+   lo guarda y responde 200 ──────────► olvida la INE
+5.                                      "¡Listo!" y regresa a url_retorno ──────────►  sigue su trámite
+```
+
+**Qué se guarda:** en PostgreSQL, solo el resumen de cada sesión (proyecto, referencia, estado, aprobada, intentos, checks fallidos, si se entregó y cuándo) y de cada intento. **Nunca** el video, la INE ni datos de la cara o la voz. La INE se convierte en un vector de 128 números al crear la sesión, se descarta la imagen, y el vector vive solo en memoria hasta que termina la sesión. El video se borra en cuanto se analiza.
+
+### 1. Crear una sesión (desde el backend, nunca desde el navegador)
+
+`multipart/form-data`, con la INE como archivo binario (no base64):
+
+```bash
+curl -X POST https://prueba-de-vida.buzzword.com.mx/api/v1/sesiones \
+  -H "X-API-Key: pv_..." \
+  -F "ine_imagen=@ine.jpg" \
+  -F "frase=acepto los términos y condiciones de mi crédito" \
+  -F "referencia_externa=cliente-123" \
+  -F "url_retorno=https://creditos.com/registro/paso-4" \
+  -F 'metadata={"tramite": "alta"}'
+```
+
+| Campo | Requerido | Descripción |
+|---|---|---|
+| `ine_imagen` | sí | Archivo con la foto de la INE (JPEG, PNG o WEBP; máx. 10 MB). El formato se revisa por el contenido, así que el `Content-Type` del archivo puede ser `application/octet-stream` |
+| `frase` | sí | Lo que el usuario lee en voz alta después de los gestos, de 4 a 25 palabras. Conviene que cambie en cada sesión (por ejemplo, con el folio del trámite o el nombre) y que los números vayan en palabras o sean de hasta tres cifras: Whisper escribe "4,521" y eso se compara mal |
+| `referencia_externa` | no | Tu identificador (cliente, trámite). Vuelve en el webhook |
+| `url_retorno` | no | A dónde regresa el usuario. Se le agregan `?sesion_id=…&estado=…&aprobada=1\|0` |
+| `webhook_url` | no | Dónde se entrega el resultado; si no, la del proyecto. Debe existir en alguno de los dos |
+| `max_intentos` | no | 1 a 5; por defecto 3 |
+| `expira_minutos` | no | 5 a 1440; por defecto 30 |
+| `umbral_rostro` | no | % mínimo de similitud con la INE; por defecto 70 |
+| `metadata` | no | Objeto JSON en texto (máx. 4 KB) que vuelve en el webhook |
+| `logo` | no | Logo para la pantalla del usuario (PNG, JPEG o WEBP; máx. 1 MB) |
+| `color_primario` / `color_secundario` | no | Colores hexadecimales (`#1B56D6`). Sin ellos, la pantalla usa los colores genéricos |
+
+Si no se detecta una cara en la INE responde `422` de inmediato, sin mandar al usuario a grabar. Respuesta (`201`):
+
+```json
+{ "id": "ses_…", "estado": "pendiente", "url_captura": "https://…/captura/<token>",
+  "intentos": 0, "max_intentos": 3, "expira": "2026-10-14T18:35:01+00:00", … }
+```
+
+### 2. Mandar al usuario a la captura
+
+- **Redirección** (recomendado): `location.href = url_captura`. Funciona en computadora y celular. Al terminar vuelve a `url_retorno`.
+- **Iframe** (el dominio del proyecto debe estar en `--dominios`):
+  ```html
+  <iframe src="URL_CAPTURA" allow="camera; microphone" style="width:100%;height:100vh;border:0"></iframe>
+  <script>
+    addEventListener("message", (e) => {
+      if (e.origin === "https://prueba-de-vida.buzzword.com.mx" && e.data?.tipo === "prueba-vida:finalizada") {
+        // e.data = { sesion_id, estado, aprobada }; el resultado completo ya llegó a tu webhook
+      }
+    });
+  </script>
+  ```
+- **App móvil:** abrir `url_captura` en un WebView con permiso de cámara y micrófono.
+
+En cada intento el servidor sortea tres gestos (girar la cabeza, parpadear y alzar una mano, en orden y lado al azar); la frase es siempre la que mandó el proyecto. El usuario solo ve: una pantalla de inicio, la cámara con un paso a la vez (3 gestos y la frase), "Verificando…" y el resultado. Si un intento no pasa, ve todos los motivos con cómo corregirlos ("No se detectó el parpadeo. Cierra bien los ojos un momento.") y puede reintentar con un reto nuevo hasta `max_intentos`.
+
+### 3. Recibir el resultado (webhook)
+
+Un `POST` con `Content-Type: application/json` a `webhook_url`, en cuanto la sesión se aprueba o se agotan los intentos:
+
+```json
+{
+  "id": "evt_…", "evento": "sesion.completada", "creado": "2026-10-14T18:08:26+00:00",
+  "datos": {
+    "sesion": { "id": "ses_…", "referencia_externa": "cliente-123", "frase": "acepto los términos…",
+                "estado": "completada", "aprobada": true, "intentos": 2, "max_intentos": 3,
+                "checks_fallidos": [], "metadata": {"tramite": "alta"}, … },
+    "resumen": {
+      "aprobada": true,
+      "checks_fallidos": [],
+      "rostro": { "coincide": true, "similitud_porcentaje": 88.4, "similitud_minima_porcentaje": 86.2,
+                  "umbral_porcentaje": 70.0, "una_sola_persona": true },
+      "frase":  { "coincide": true, "coincidencia_porcentaje": 96.5, "umbral_porcentaje": 85.0,
+                  "esperada": "acepto los términos…", "transcripcion": "acepto los términos…" },
+      "vida":   { "persona_real": true, "probabilidad_real_porcentaje": 93.1, "umbral_porcentaje": 50.0,
+                  "labios_sincronizados": true },
+      "gestos": { "completos": true, "en_orden": true,
+                  "detalle": [ { "gesto": "turn_left", "detectado": true, "segundo": 1.4 }, … ] }
+    },
+    "resultado": { "result": { "approved": true, "failed_checks": [], "summary": "…" },
+                   "checks": { "face": {…}, "voice": {…}, "liveness": {…}, "challenge": {…} },
+                   "details": { … }, "meta": { … } },
+    "intentos": [ { "numero": 1, "aprobado": false, "checks_fallidos": ["challenge.blink"], … },
+                  { "numero": 2, "aprobado": true, "checks_fallidos": [], … } ]
+  }
+}
+```
+
+`resumen` es lo que normalmente se guarda: la decisión, y por cada validación una bandera y su porcentaje. Las banderas son `true` (pasó), `false` (falló) o `null` (no se pudo evaluar porque falló un paso previo; por ejemplo, sin rostro en el video no hay similitud). La sesión se aprueba solo si todas pasan. `resultado` es el mismo reporte que devuelve `POST /api/verify-identity` (ver [Respuesta](#respuesta-resumida)), del último intento. Otros eventos: `sesion.expirada` y `sesion.cancelada`, solo con `sesion`.
+
+Cabeceras: `X-Vida-Evento`, `X-Vida-Entrega` (id único, para ignorar duplicados) y `X-Vida-Firma: t=<unix>,v1=<HMAC-SHA256(webhook_secreto, "<t>." + cuerpo_crudo)>`.
+
+**Responde 2xx solo después de guardar.** Es la confirmación: el usuario ve "¡Listo!" y el servicio olvida la INE. Si respondes error o no contestas en 20 s, se reintenta 2 veces; si sigue fallando, el usuario ve "No se pudo registrar el resultado" con un botón para reintentar el envío (mientras no venza la sesión).
+
+Verificar la firma, Python (FastAPI):
+
+```python
+import hashlib, hmac, json, time
+
+@app.post("/webhooks/vida")
+async def webhook(request: Request):
+    cuerpo = await request.body()                     # cuerpo crudo, tal cual llegó
+    partes = dict(p.split("=", 1) for p in request.headers["X-Vida-Firma"].split(","))
+    esperado = hmac.new(SECRETO.encode(), f"{partes['t']}.".encode() + cuerpo, hashlib.sha256).hexdigest()
+    if abs(time.time() - int(partes["t"])) > 300 or not hmac.compare_digest(esperado, partes["v1"]):
+        raise HTTPException(401)
+    evento = json.loads(cuerpo)
+    guardar_en_bd(evento["datos"])
+    return {"ok": True}                               # 200 = "ya lo guardé"
+```
+
+Node / Nuxt (`server/api/webhooks/vida.post.ts`):
+
+```ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+export default defineEventHandler(async (event) => {
+  const cuerpo = (await readRawBody(event, false)) as Buffer;
+  const partes = Object.fromEntries(getHeader(event, "x-vida-firma")!.split(",").map((p) => p.split("=")));
+  const esperado = createHmac("sha256", process.env.VIDA_WEBHOOK_SECRETO!).update(`${partes.t}.`).update(cuerpo).digest("hex");
+  const a = Buffer.from(esperado), b = Buffer.from(partes.v1 ?? "");
+  if (Math.abs(Date.now() / 1000 - Number(partes.t)) > 300 || a.length !== b.length || !timingSafeEqual(a, b))
+    throw createError({ statusCode: 401 });
+  const evento = JSON.parse(cuerpo.toString());
+  // guardar evento.datos en tu BD
+  return { ok: true };
+});
+```
+
+[`ejemplos/proyecto_demo.py`](ejemplos/proyecto_demo.py) es un proyecto cliente completo (subir INE, crear sesión, verificar la firma y mostrar el resultado), útil para probar todo con la cámara.
+
+### 4. Otras rutas para el backend del proyecto
+
+| Método | Ruta | Para qué |
+|---|---|---|
+| GET | `/api/v1/sesiones/{id}` | Estado de la sesión y sus intentos (sin reporte ni biometría) |
+| GET | `/api/v1/sesiones?estado=&limite=` | Sesiones del proyecto, de la más reciente a la más vieja |
+| POST | `/api/v1/sesiones/{id}/cancelar` | Cancelar una sesión activa |
+
+Todas llevan `X-API-Key` y solo ven las sesiones de su proyecto. Estados: `pendiente`, `procesando`, `entregando`, `completada`, `error_entrega`, `expirada`, `cancelada`.
 
 ---
 
@@ -297,6 +488,14 @@ Variables de entorno:
 
 | Variable | Default | Descripción |
 |---|---|---|
+| `DATABASE_URL` | vacío | PostgreSQL de proyectos y sesiones. En Docker se arma solo con `POSTGRES_*` |
+| `POSTGRES_PASSWORD` / `POSTGRES_USER` / `POSTGRES_DB` | — / `vida` / `vida` | Base de datos del `docker-compose.yml`; la contraseña es obligatoria |
+| `PUBLIC_URL` | URL de la petición | URL pública para los enlaces de captura. **Defínela en producción** |
+| `DEMO` | `false` | `true` solo en desarrollo: página de prueba en `/` y API directa sin llave si no hay `API_KEYS` |
+| `SESSION_MINUTES` / `SESSION_MAX_ATTEMPTS` | `30` / `3` | Valores por defecto de cada sesión |
+| `MAX_CONCURRENT_VERIFICATIONS` | `1` | Videos que se analizan a la vez; los demás esperan |
+| `DELIVERY_TIMEOUT_SEC` / `DELIVERY_RETRIES` | `20` / `2` | Espera y reintentos del webhook |
+| `ALLOW_HTTP_URLS` | `false` | Acepta `url_retorno` y `webhook_url` con `http://` (solo desarrollo) |
 | `REQUIRE_CHALLENGE` | `true` | Exige `challenge_id` en `/api/verify-identity`. `false` solo para desarrollo o para migrar clientes viejos |
 | `CHALLENGE_TTL_SEC` | `180` | Vigencia de un reto |
 | `CHALLENGE_RATE_LIMIT_REQUESTS` | `30` | Retos por proyecto (o IP) en la ventana del rate limit |
@@ -322,6 +521,7 @@ Los umbrales (similitud facial, anti-spoofing, sincronía de labios, gestos, pun
 
 ## Limitaciones conocidas
 
+- **Las sesiones activas viven en memoria.** La INE (como vector) y el reto solo existen en el proceso: un reinicio deja las sesiones a medias como `expiradas` y su proyecto recibe `sesion.expirada`. Por lo mismo corre un solo contenedor de la API; para varias réplicas, ese estado temporal iría a Redis.
 - **Los retos viven en memoria.** Un reinicio los borra (el usuario pide otro), y con más de un worker un reto pedido en uno no existe en otro. Para escalar a varios procesos habría que moverlos a Redis o similar.
 - **Cámaras virtuales y deepfakes en vivo.** El reto frena videos pregrabados, pero no una cámara virtual que genere la cara en tiempo real siguiendo los gestos. Desde un navegador no hay una forma confiable de detectarlo.
 - **Umbrales sin calibrar.** El de SFace (`0.363`) es el publicado por OpenCV, y los de sincronía de labios, gestos y calidad de foto son provisionales. Hay que ajustarlos con pares reales de INE y video o foto.
@@ -337,3 +537,5 @@ Todos permiten uso comercial:
 - **MiniFASNet**: Apache 2.0 ([Silent-Face-Anti-Spoofing](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing)); ver [`app/assets/antispoof/NOTICE`](app/assets/antispoof/NOTICE)
 - **MediaPipe Face Landmarker y Hand Landmarker**: Apache 2.0 (también la versión web `@mediapipe/tasks-vision` que usa la página de prueba)
 - **Whisper**: MIT
+
+Componentes de las sesiones: **PostgreSQL** (PostgreSQL License, permisiva), **asyncpg** (Apache 2.0) y **httpx** (BSD-3).

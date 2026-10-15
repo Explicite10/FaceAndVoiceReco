@@ -61,3 +61,5 @@ verification_limiter = RateLimiter(settings.rate_limit_requests, settings.rate_l
 
 # Pedir un reto es barato, pero cada uno ocupa memoria hasta que vence.
 challenge_limiter = RateLimiter(settings.challenge_rate_limit_requests, settings.rate_limit_window_sec)
+# Crear sesiones: cada una calcula la cara de la INE.
+session_limiter = RateLimiter(settings.challenge_rate_limit_requests, settings.rate_limit_window_sec)

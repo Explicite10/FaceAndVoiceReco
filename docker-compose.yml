@@ -1,8 +1,8 @@
 # Levantar o actualizar en el servidor:
 #   docker compose up -d --build
 #
-# restart: always hace que el contenedor arranque solo al prender el servidor,
-# siempre que el servicio de Docker tambien arranque con el sistema:
+# restart: always hace que los contenedores arranquen solos al prender el
+# servidor, siempre que el servicio de Docker tambien arranque con el sistema:
 #   sudo systemctl enable docker
 
 services:
@@ -12,5 +12,39 @@ services:
     container_name: face-voice-reco
     restart: always
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vida}:${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}@db:5432/${POSTGRES_DB:-vida}
+    # API_BIND=127.0.0.1 si el proxy HTTPS (nginx, etc.) esta en este mismo
+    # servidor: asi nadie entra por http://IP:7860 saltandose el certificado.
     ports:
-      - "${API_PORT:-7860}:7860"
+      - "${API_BIND:-0.0.0.0}:${API_PORT:-7860}:7860"
+    logging: &logs
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Proyectos autorizados y resumen de sesiones. Sin video, INE ni datos de la cara.
+  db:
+    image: postgres:16.4-alpine
+    container_name: face-voice-reco-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vida}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-vida}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    logging: *logs
+    # Solo accesible desde el propio servidor (para respaldos o psql), no desde afuera.
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
