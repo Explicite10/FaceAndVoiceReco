@@ -230,7 +230,7 @@ Backend del proyecto                    Prueba de vida                          
 5.                                      "¡Listo!" y regresa a url_retorno ──────────►  sigue su trámite
 ```
 
-**Qué se guarda:** en PostgreSQL, solo el resumen de cada sesión (proyecto, referencia, estado, aprobada, intentos, checks fallidos, si se entregó y cuándo) y de cada intento. **Nunca** el video, la INE ni datos de la cara o la voz. La INE se convierte en un vector de 128 números al crear la sesión, se descarta la imagen, y el vector vive solo en memoria hasta que termina la sesión. El video se borra en cuanto se analiza. Si el proyecto crea la sesión con `incluir_video` o `incluir_fotogramas`, el video y 5 fotogramas del intento final van en el webhook (base64) y se descartan en cuanto lo confirma.
+**Qué se guarda:** en PostgreSQL, solo el resumen de cada sesión (proyecto, referencia, estado, aprobada, intentos, checks fallidos, si se entregó y cuándo) y de cada intento. **Nunca** el video, la INE ni datos de la cara o la voz. La INE se convierte en un vector de 128 números al crear la sesión, se descarta la imagen, y el vector vive solo en memoria hasta que termina la sesión. El video se borra en cuanto se analiza. Si el proyecto crea la sesión con `incluir_video` o `incluir_fotogramas`, el video y 5 fotogramas del intento final van en el webhook como archivos binarios (multipart/form-data, firmando la parte `evento`) y se descartan en cuanto lo confirma.
 
 ### 1. Crear una sesión (desde el backend, nunca desde el navegador)
 

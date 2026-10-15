@@ -6,8 +6,10 @@ Necesita PostgreSQL:
     TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres pytest -q
 """
 import asyncio
-import base64
+import email.policy
+import hashlib
 import json
+from email.parser import BytesParser
 import os
 
 import cv2
@@ -37,18 +39,35 @@ def _informe(aprobado: bool, codes: tuple[str, ...] = ()) -> dict:
     }
 
 
+def _partes_multipart(request: httpx.Request) -> dict[str, tuple[str, str, bytes]]:
+    """{campo: (nombre, tipo, bytes)} de un cuerpo multipart/form-data."""
+    crudo = b"Content-Type: " + request.headers["Content-Type"].encode() + b"\r\n\r\n" + request.read()
+    mensaje = BytesParser(policy=email.policy.HTTP).parsebytes(crudo)
+    return {
+        p.get_param("name", header="content-disposition"): (p.get_filename(), p.get_content_type(), p.get_payload(decode=True))
+        for p in mensaje.iter_parts()
+    }
+
+
 class Proyecto:
     """Backend falso: guarda lo que recibe y responde con `codigo`."""
 
     def __init__(self, secreto: str):
         self.secreto = secreto
         self.recibidos: list[dict] = []
+        self.archivos: list[dict] = []
         self.codigo = 200
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
-        cuerpo = request.read()
+        if request.headers["Content-Type"].startswith("multipart/form-data"):
+            partes = _partes_multipart(request)
+            cuerpo = partes.pop("evento")[2]  # se firma solo el JSON
+        else:
+            assert request.headers["Content-Type"] == "application/json"
+            cuerpo, partes = request.read(), {}
         assert entrega.verificar(self.secreto, request.headers["X-Vida-Firma"], cuerpo)
         self.recibidos.append(json.loads(cuerpo))
+        self.archivos.append(partes)
         return httpx.Response(self.codigo)
 
 
@@ -191,8 +210,10 @@ async def test_evidencia_del_intento_final(entorno):
 
     ev = entorno["backend"].recibidos[-1]["datos"]["evidencia"]
     assert ev["intento"] == 2
-    assert ev["video"]["tipo"] == "video/webm" and base64.b64decode(ev["video"]["base64"]) == b"x" * 10
-    assert ev["fotogramas"] == []  # el video falso no se puede decodificar
+    # El video falso no se puede decodificar: no hay fotogramas, pero si el video, en binario.
+    assert ev["archivos"] == [{"campo": "video", "nombre": "video.webm", "tipo": "video/webm", "bytes": 10,
+                               "sha256": hashlib.sha256(b"x" * 10).hexdigest()}]
+    assert entorno["backend"].archivos[-1] == {"video": ("video.webm", "video/webm", b"x" * 10)}
     assert sesiones._sesiones[s["id"]].evidencia is None  # entregada: se olvida
 
 
@@ -201,6 +222,7 @@ async def test_sin_evidencia_por_defecto(entorno):
     entorno["resultados"].append(_informe(True))
     await _intento(entorno, _token(s))
     assert entorno["backend"].recibidos[-1]["datos"]["evidencia"] is None
+    assert entorno["backend"].archivos[-1] == {}  # JSON simple, como siempre
 
 
 def test_fotogramas_de_un_video_real(tmp_path):
@@ -210,10 +232,12 @@ def test_fotogramas_de_un_video_real(tmp_path):
         out.write(np.full((48, 64, 3), i * 8, dtype=np.uint8))
     out.release()
     fotos = evidencia.extraer_fotogramas(path)
-    assert len(fotos) == evidencia.FOTOGRAMAS
-    assert all(f["tipo"] == "image/jpeg" for f in fotos)
+    assert [f["campo"] for f in fotos] == [f"fotograma_{i}" for i in range(1, evidencia.FOTOGRAMAS + 1)]
+    assert all(f["tipo"] == "image/jpeg" and f["nombre"].endswith(".jpg") for f in fotos)
     assert [f["segundo"] for f in fotos] == sorted(f["segundo"] for f in fotos)
-    assert cv2.imdecode(np.frombuffer(base64.b64decode(fotos[0]["base64"]), np.uint8), cv2.IMREAD_COLOR).shape == (48, 64, 3)
+    assert cv2.imdecode(np.frombuffer(fotos[0]["datos"], np.uint8), cv2.IMREAD_COLOR).shape == (48, 64, 3)
+    descrito = evidencia.describir(1, fotos)["archivos"][0]
+    assert "datos" not in descrito and descrito["sha256"] == hashlib.sha256(fotos[0]["datos"]).hexdigest()
 
 
 async def test_video_sin_reto(entorno):
