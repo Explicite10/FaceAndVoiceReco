@@ -270,12 +270,14 @@ function grabar(reto) {
     $("sCamara").classList.add("leyendo");
     mostrarPaso("frase", "Ahora lee la frase en voz alta", "Mirando a la cámara, con voz clara.");
     $("frase").textContent = reto.phrase;
+    // Frases largas (consentimientos): letra mas chica para que quepan con el boton a la vista.
+    $("frase").classList.toggle("larga", reto.phrase.split(/\s+/).length > 25);
     $("fraseBox").hidden = false;
     $("btnListo").hidden = false;
     $("btnListo").disabled = true;
     setTimeout(() => { $("btnListo").disabled = false; }, 2500);
-    // Tiempo para leer: ~0.5 s por palabra mas margen (la frase la define el proyecto, hasta 25 palabras).
-    const segundos = Math.min(16, Math.max(6, reto.phrase.split(/\s+/).length * 0.5 + 3));
+    // Tiempo para leer: ~0.5 s por palabra mas margen (la frase la define el proyecto, hasta 50 palabras).
+    const segundos = Math.min(30, Math.max(6, reto.phrase.split(/\s+/).length * 0.5 + 3));
     const barra = $("cuenta");
     barra.style.transition = "none";
     barra.style.transform = "scaleX(1)";

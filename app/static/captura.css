@@ -195,6 +195,7 @@ h2 { font-size: 22px; font-weight: 650; }
 }
 .phrase-label { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 .phrase { margin: 0; font-size: 21px; line-height: 1.45; font-weight: 600; text-wrap: pretty; }
+.phrase.larga { font-size: 17px; line-height: 1.4; }
 .countdown { margin-top: 14px; height: 6px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 15%, transparent); overflow: hidden; }
 .countdown span { display: block; height: 100%; width: 100%; background: var(--accent-2-real); border-radius: 6px; transform-origin: left; }
 

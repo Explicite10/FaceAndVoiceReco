@@ -91,7 +91,7 @@ Content-Type: multipart/form-data
 | Campo | Tipo | Obligatorio | Descripción |
 |---|---|---|---|
 | `ine_imagen` | archivo | **sí** | Foto de la INE, en binario. JPEG, PNG o WEBP; máximo 10 MB. El formato se revisa por el contenido, así que el `Content-Type` del archivo puede ser `application/octet-stream`. |
-| `frase` | texto | **sí** | Lo que el usuario lee en voz alta. De 4 a 25 palabras. |
+| `frase` | texto | **sí** | Lo que el usuario lee en voz alta. De 4 a 50 palabras. |
 | `referencia_externa` | texto | no | Su identificador del cliente o trámite (máx. 200 caracteres). Vuelve en el resultado. |
 | `url_retorno` | texto | no | URL `https://` a la que regresa el usuario al terminar. Debe ser de un dominio permitido. |
 | `webhook_url` | texto | no | URL `https://` donde recibir el resultado, si es distinta a la registrada. |
@@ -112,7 +112,7 @@ Si no se mandan `logo` ni los colores, la pantalla usa el diseño genérico. El 
 
 - Conviene que cambie en cada sesión, por ejemplo con el folio del trámite o el nombre del cliente. Así no se puede reusar una grabación.
 - Los números van mejor en palabras o de máximo tres cifras: la transcripción escribe "4,521" y eso se compara mal.
-- La lectura debe caber en el video junto con los gestos, por eso el máximo es 25 palabras.
+- La lectura debe caber en el video junto con los gestos, por eso el máximo es 50 palabras (unos 25 segundos leyendo). Entre más larga, más fácil que el usuario se trabe: si se puede, que sea corta.
 
 ### Ejemplo
 
@@ -228,7 +228,7 @@ Todos responden JSON con un campo `detail` que explica el problema.
 | `401` | Falta la API key o no es válida |
 | `400` | `ine_imagen` no es una imagen válida |
 | `413` | `ine_imagen` pesa más de 10 MB, o `logo` más de 1 MB |
-| `422` | Falta un campo obligatorio; la INE no tiene un rostro visible; la frase tiene menos de 4 o más de 25 palabras; un color no es hexadecimal; el logo no es PNG, JPEG o WEBP; `url_retorno` o `webhook_url` no son `https://` o no son de un dominio permitido; `metadata` no es un objeto JSON |
+| `422` | Falta un campo obligatorio; la INE no tiene un rostro visible; la frase tiene menos de 4 o más de 50 palabras; un color no es hexadecimal; el logo no es PNG, JPEG o WEBP; `url_retorno` o `webhook_url` no son `https://` o no son de un dominio permitido; `metadata` no es un objeto JSON |
 | `429` | Demasiadas sesiones por minuto. Esperar los segundos del header `Retry-After` |
 | `503` | El servicio no está disponible |
 
@@ -685,7 +685,7 @@ Las consultas no traen el reporte ni la frase de sesiones viejas: el resultado c
 
 - [ ] La `api_key` y el `webhook_secreto` están en el backend, en variables de entorno o un gestor de secretos.
 - [ ] La sesión se crea desde el backend, nunca desde el navegador.
-- [ ] La frase cambia en cada sesión y tiene de 4 a 25 palabras.
+- [ ] La frase cambia en cada sesión y tiene de 4 a 50 palabras.
 - [ ] El webhook es HTTPS, público y verifica la firma con el cuerpo crudo.
 - [ ] El webhook responde `2xx` solo después de guardar, e ignora entregas repetidas.
 - [ ] La decisión se toma con `datos.resumen.aprobada` del webhook, no con los parámetros de `url_retorno`.

@@ -65,9 +65,9 @@ class Settings(BaseModel):
     asr_max_concurrency: int = int(os.getenv("ASR_MAX_CONCURRENCY", "1"))  # = cores / asr_cpu_threads
 
     # Gates de audio (antes y despues del ASR). El maximo cubre los gestos del
-    # reto (~10 s) mas la lectura de la frase.
+    # reto (~10 s) mas la lectura de la frase (hasta 50 palabras, ~30 s).
     audio_min_duration_sec: float = 4.0
-    audio_max_duration_sec: float = 30.0
+    audio_max_duration_sec: float = 60.0
     min_speech_duration_sec: float = 2.5
     min_speech_ratio: float = 0.15
 

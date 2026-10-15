@@ -249,7 +249,7 @@ curl -X POST https://prueba-de-vida.buzzword.com.mx/api/v1/sesiones \
 | Campo | Requerido | Descripción |
 |---|---|---|
 | `ine_imagen` | sí | Archivo con la foto de la INE (JPEG, PNG o WEBP; máx. 10 MB). El formato se revisa por el contenido, así que el `Content-Type` del archivo puede ser `application/octet-stream` |
-| `frase` | sí | Lo que el usuario lee en voz alta después de los gestos, de 4 a 25 palabras. Conviene que cambie en cada sesión (por ejemplo, con el folio del trámite o el nombre) y que los números vayan en palabras o sean de hasta tres cifras: Whisper escribe "4,521" y eso se compara mal |
+| `frase` | sí | Lo que el usuario lee en voz alta después de los gestos, de 4 a 50 palabras. Conviene que cambie en cada sesión (por ejemplo, con el folio del trámite o el nombre) y que los números vayan en palabras o sean de hasta tres cifras: Whisper escribe "4,521" y eso se compara mal |
 | `referencia_externa` | no | Tu identificador (cliente, trámite). Vuelve en el webhook |
 | `url_retorno` | no | A dónde regresa el usuario. Se le agregan `?sesion_id=…&estado=…&aprobada=1\|0` |
 | `webhook_url` | no | Dónde se entrega el resultado; si no, la del proyecto. Debe existir en alguno de los dos |
@@ -403,7 +403,7 @@ En el video, la persona hace los gestos **en ese orden** y después lee la frase
 | Campo | Tipo | Requerido | Descripción |
 |---|---|---|---|
 | `id_image` | archivo de imagen | sí | Foto de la identificación |
-| `video` | `.mp4` `.mov` `.m4v` `.avi` `.mkv` `.webm` | sí | Video de 4 a 30 s, máximo 50 MB |
+| `video` | `.mp4` `.mov` `.m4v` `.avi` `.mkv` `.webm` | sí | Video de 4 a 60 s, máximo 50 MB |
 | `challenge_id` | texto | sí* | El de `POST /api/challenge`. *Opcional solo con `REQUIRE_CHALLENGE=false` |
 | `expected_phrase` | texto | no | Solo sin `challenge_id`; con reto se ignora |
 | `match_threshold_percent` | número 1–100 | no | % mínimo de similitud facial en cada tramo; default 70 |

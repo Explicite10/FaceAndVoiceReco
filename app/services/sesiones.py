@@ -420,8 +420,8 @@ def _leer_metadata(texto: str | None) -> dict:
     return valor
 
 
-# La frase se lee despues de los gestos y todo debe caber en el video (max 30 s).
-FRASE_MIN_PALABRAS, FRASE_MAX_PALABRAS = 4, 25
+# La frase se lee despues de los gestos y todo debe caber en el video (max 60 s).
+FRASE_MIN_PALABRAS, FRASE_MAX_PALABRAS = 4, 50
 
 
 def _validar_frase(frase: str) -> str:
@@ -445,7 +445,7 @@ def _requiere_db() -> None:
 async def crear_sesion(
     request: Request,
     ine_imagen: UploadFile = File(..., description="Foto de la INE (JPEG, PNG o WEBP, max 10 MB), como archivo."),
-    frase: str = Form(..., max_length=250, description="Frase que el usuario lee en voz alta, de 4 a 25 palabras."),
+    frase: str = Form(..., max_length=500, description="Frase que el usuario lee en voz alta, de 4 a 50 palabras."),
     referencia_externa: str | None = Form(None, max_length=200, description="Tu identificador; vuelve en el aviso"),
     url_retorno: str | None = Form(None, description="A donde regresa el usuario al terminar"),
     webhook_url: str | None = Form(None, description="Donde se entrega el resultado; si no, la del proyecto"),
