@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Probar frase</title>
+  <style>
+    :root {
+      --bg: #f6f7f9; --surface: #fff; --text: #16181d; --muted: #5d6470; --line: #dde1e7;
+      --accent: #1b56d6; --ok: #138a4b; --bad: #c2352b; --warn: #a36a00; --soft: #eef3ff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111317; --surface: #1a1d23; --text: #eceef2; --muted: #a0a7b3; --line: #2c313a;
+        --accent: #6f9bff; --ok: #3fc07a; --bad: #ff7a6e; --warn: #e2b04a; --soft: #1f2836;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 24px; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 20px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+    label { font-weight: 600; display: block; margin-bottom: 6px; }
+    textarea { width: 100%; min-height: 96px; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+               background: var(--bg); color: var(--text); font: inherit; resize: vertical; }
+    .info { color: var(--muted); font-size: 14px; margin-top: 8px; }
+    .info b { color: var(--text); }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 11px 18px; cursor: pointer;
+             background: var(--accent); color: #fff; }
+    button.sec { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+    button:disabled { opacity: .5; cursor: default; }
+    .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; margin: 14px 0 0; }
+    .check input { margin-top: 4px; }
+    .lectura { font-size: 20px; font-weight: 600; line-height: 1.45; background: var(--soft); border-radius: 10px; padding: 14px; margin: 14px 0 0; }
+    .barra { height: 6px; border-radius: 6px; background: var(--line); overflow: hidden; margin-top: 10px; }
+    .barra span { display: block; height: 100%; width: 100%; background: var(--accent); transform-origin: left; }
+    .rec { color: var(--bad); font-weight: 700; }
+    .pct { font-size: 44px; font-weight: 800; line-height: 1; }
+    .pasa { color: var(--ok); } .falla { color: var(--bad); } .aviso { color: var(--warn); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 15px; }
+    td { padding: 7px 0; border-top: 1px solid var(--line); vertical-align: top; }
+    td:first-child { color: var(--muted); width: 38%; padding-right: 12px; }
+    .hist td:first-child { width: auto; }
+    .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--soft); margin: 2px 4px 2px 0; font-size: 14px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Probar frase</h1>
+  <p class="sub">Graba la frase con tu voz y mira qué porcentaje saca. Pasa con <b>{{ umbral|int }}%</b> o más. Solo existe en modo DEMO.</p>
+
+  <section class="card">
+    <label for="frase">Frase</label>
+    <textarea id="frase">AUTORIZO A AD SEGUROS, S.A. DE C.V. A UTILIZAR MIS DATOS PERSONALES PARA CONTINUAR CON LA CONTRATACIÓN DE MI PLAN ZENDA. DECLARO QUE CONOZCO EL USO QUE SE HARÁ DE MI INFORMACIÓN.</textarea>
+    <div class="info" id="conteo"></div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <button id="btnGrabar">Grabar</button>
+      <button id="btnParar" class="sec" disabled>Terminar</button>
+      <span id="estado" class="info" style="margin:0"></span>
+    </div>
+    <label class="check"><input type="checkbox" id="cortar">
+      <span>Cortar la grabación cuando se acabe el tiempo de la pantalla de captura, como le pasaría al usuario.</span></label>
+    <div id="lecturaBox" hidden>
+      <p class="lectura" id="lectura"></p>
+      <div class="barra" id="barraBox" hidden><span id="barra"></span></div>
+    </div>
+    <p class="info">¿Ya tienes una grabación (nota de voz, video)? <label class="sec" style="display:inline;font-weight:600;color:var(--accent);cursor:pointer">
+      súbela aquí<input type="file" id="archivo" accept="audio/*,video/*" hidden></label>.</p>
+  </section>
+
+  <section class="card" id="resultado" hidden></section>
+
+  <section class="card" id="historial" hidden>
+    <label>Intentos</label>
+    <table class="hist"><tbody id="filas"></tbody></table>
+  </section>
+</main>
+
+<script>
+const UMBRAL = {{ umbral }}, MIN_P = {{ min_palabras }}, MAX_P = {{ max_palabras }}, MAX_S = {{ max_segundos }};
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// Igual que el servidor: sin acentos ni puntuacion, "S.A." cuenta como dos palabras.
+const palabras = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[^a-z0-9ñ]+/).filter(Boolean).length;
+// Igual que la pantalla de captura (captura.js): tiempo que se da para leer.
+const tiempoCaptura = (t) => Math.min(30, Math.max(6, t.trim().split(/\s+/).length * 0.5 + 3));
+
+function actualizarConteo() {
+  const t = $("frase").value, n = palabras(t);
+  const fuera = n < MIN_P || n > MAX_P;
+  $("conteo").innerHTML = `<b class="${fuera ? "falla" : ""}">${n} palabras</b> (se aceptan de ${MIN_P} a ${MAX_P}) · ` +
+    `la pantalla de captura da <b>${tiempoCaptura(t)} s</b> para leerla`;
+}
+$("frase").addEventListener("input", actualizarConteo);
+actualizarConteo();
+
+let recorder, chunks = [], inicio = 0, reloj, corte, intento = 0;
+
+function tipoAudio() {
+  const opciones = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+  return opciones.find((o) => window.MediaRecorder && MediaRecorder.isTypeSupported(o)) || "";
+}
+
+$("btnGrabar").onclick = async () => {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    $("estado").textContent = "No se pudo usar el micrófono: " + e.message;
+    return;
+  }
+  const mime = tipoAudio();
+  recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  chunks = [];
+  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  recorder.onstop = () => {
+    stream.getTracks().forEach((t) => t.stop());
+    clearInterval(reloj); clearTimeout(corte);
+    const tipo = recorder.mimeType || mime || "audio/webm";
+    const ext = tipo.includes("mp4") ? "m4a" : tipo.includes("ogg") ? "ogg" : "webm";
+    enviar(new Blob(chunks, { type: tipo }), `frase.${ext}`, (performance.now() - inicio) / 1000);
+  };
+  recorder.start();
+  inicio = performance.now();
+  $("btnGrabar").disabled = true; $("btnParar").disabled = false;
+  $("lectura").textContent = $("frase").value;
+  $("lecturaBox").hidden = false;
+  const segundos = tiempoCaptura($("frase").value);
+  $("barraBox").hidden = !$("cortar").checked;
+  if ($("cortar").checked) {
+    const b = $("barra");
+    b.style.transition = "none"; b.style.transform = "scaleX(1)"; void b.offsetWidth;
+    b.style.transition = `transform ${segundos}s linear`; b.style.transform = "scaleX(0)";
+    corte = setTimeout(() => recorder.state !== "inactive" && recorder.stop(), segundos * 1000);
+  } else {
+    corte = setTimeout(() => recorder.state !== "inactive" && recorder.stop(), (MAX_S - 1) * 1000);
+  }
+  reloj = setInterval(() => {
+    $("estado").innerHTML = `<span class="rec">● Grabando</span> ${((performance.now() - inicio) / 1000).toFixed(1)} s`;
+  }, 100);
+};
+
+$("btnParar").onclick = () => recorder && recorder.state !== "inactive" && recorder.stop();
+
+$("archivo").onchange = (e) => {
+  const f = e.target.files[0];
+  if (f) enviar(f, f.name, null);
+  e.target.value = "";
+};
+
+async function enviar(blob, nombre, duracion) {
+  $("btnGrabar").disabled = true; $("btnParar").disabled = true;
+  $("estado").textContent = "Analizando…";
+  const form = new FormData();
+  form.append("frase", $("frase").value);
+  form.append("audio", blob, nombre);
+  try {
+    const r = await fetch("/api/probar-frase", { method: "POST", body: form });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.status);
+    mostrar(d, duracion);
+  } catch (e) {
+    $("estado").textContent = "Error: " + e.message;
+  } finally {
+    $("btnGrabar").disabled = false;
+    $("lecturaBox").hidden = true;
+  }
+}
+
+const MOTIVO = {
+  match: ["Pasa", "pasa"],
+  no_match: ["No pasa: la frase no coincide lo suficiente", "falla"],
+  low_confidence: ["No pasa: el audio no se entendió con seguridad", "aviso"],
+  no_speech: ["No pasa: casi no se escuchó voz", "aviso"],
+  invalid_audio: ["No pasa: el audio es muy corto o muy largo", "aviso"],
+};
+
+function mostrar(d, duracion) {
+  $("estado").textContent = "";
+  const [texto, clase] = MOTIVO[d.decision] || [d.decision, "aviso"];
+  const etiquetas = (l) => l && l.length ? l.map((w) => `<span class="tag">${esc(w)}</span>`).join("") : "—";
+  $("resultado").hidden = false;
+  $("resultado").innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <div class="pct ${clase}">${d.match_percent.toFixed(1)}%</div>
+      <div class="${clase}" style="font-weight:700">${texto}</div>
+    </div>
+    <table>
+      <tr><td>Se escuchó</td><td>${esc(d.transcript) || "—"}</td></tr>
+      <tr><td>Palabras que faltaron</td><td>${etiquetas(d.missing_words)}</td></tr>
+      <tr><td>Palabras de más o distintas</td><td>${etiquetas(d.extra_words)}</td></tr>
+      <tr><td>Duración del audio</td><td>${d.audio.duration_sec} s, con voz ${d.audio.speech_duration_sec} s</td></tr>
+      <tr><td>Mínimo para pasar</td><td>${UMBRAL}%</td></tr>
+      ${d.signals && d.signals.length ? `<tr><td>Avisos</td><td>${etiquetas(d.signals)}</td></tr>` : ""}
+      <tr><td>Tiempo de análisis</td><td>${(d.elapsed_ms / 1000).toFixed(1)} s (modelo ${esc(d.model.size)})</td></tr>
+    </table>`;
+  intento += 1;
+  $("historial").hidden = false;
+  $("filas").insertAdjacentHTML("afterbegin", `<tr>
+    <td>#${intento}</td><td class="${clase}" style="font-weight:700">${d.match_percent.toFixed(1)}%</td>
+    <td>${duracion ? duracion.toFixed(1) + " s" : "archivo"}</td><td>${esc(d.transcript)}</td></tr>`);
+}
+</script>
+</body>
+</html>

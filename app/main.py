@@ -1,8 +1,9 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +15,10 @@ from app.core.config import settings
 from app.services import sesiones
 from app.services.antispoof import load_antispoof_models
 from app.services.asr_engine import load_model
+from app.services.audio_liveness import verify_voice_from_path
+from app.services.identity_verification import UPLOAD_DIR
+from app.services.sesiones import FRASE_MAX_PALABRAS, FRASE_MIN_PALABRAS
+from app.services.upload_io import ALLOWED_VIDEO_EXT, save_upload_to_temp
 from app.services.face_engine import load_face_models
 from app.services.face_track import load_track_models
 
@@ -91,3 +96,38 @@ app.include_router(identity_router, prefix="/api")
 app.include_router(sesiones.api)
 app.include_router(sesiones.captura_api)
 app.include_router(sesiones.paginas)
+
+
+# Probador de frases (solo DEMO): para medir, con la voz de uno, que porcentaje
+# saca una frase antes de usarla en las sesiones de un proyecto.
+_AUDIO_EXT = ALLOWED_VIDEO_EXT | {".m4a", ".mp3", ".wav", ".ogg", ".oga", ".aac"}
+
+
+def _solo_demo() -> None:
+    if not settings.demo:
+        raise HTTPException(status_code=404, detail="No encontrado")
+
+
+@app.get("/probar-frase", response_class=HTMLResponse, include_in_schema=False)
+def probar_frase_pagina(request: Request):
+    _solo_demo()
+    return templates.TemplateResponse("probar_frase.html", {
+        "request": request,
+        "umbral": settings.phrase_match_threshold,
+        "min_palabras": FRASE_MIN_PALABRAS,
+        "max_palabras": FRASE_MAX_PALABRAS,
+        "max_segundos": settings.audio_max_duration_sec,
+    })
+
+
+@app.post("/api/probar-frase", include_in_schema=False)
+async def probar_frase(frase: str = Form(..., max_length=500), audio: UploadFile = File(...)):
+    _solo_demo()
+    path = await save_upload_to_temp(audio, UPLOAD_DIR, allowed_ext=_AUDIO_EXT, max_mb=settings.max_video_mb)
+    try:
+        return await verify_voice_from_path(path, frase)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
