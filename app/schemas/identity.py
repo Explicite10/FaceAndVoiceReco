@@ -61,12 +61,14 @@ class PhraseMatch(BaseModel):
     word_error_rate: Optional[float] = None
     missing_words: List[str]
     extra_words: List[str]
+    ignored_words: List[str] = []
 
 
 class AudioInfo(BaseModel):
     duration_sec: float
     speech_sec: float
     speech_ratio: float
+    phrase_window: Optional[dict] = None
 
 
 class Transcription(BaseModel):

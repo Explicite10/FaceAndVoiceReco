@@ -315,6 +315,9 @@ async function grabar(reto) {
 
   // fase: encuadre -> cuenta -> gesto -> frase -> fin
   let fase = "encuadre", paso = 0, desde = performance.now(), inicioRec = 0, ultimo = 0;
+  // Segundos del video en que se mostro la frase y en que termino: el servidor
+  // solo escucha ese tramo, asi lo dicho durante los gestos no cuenta.
+  let fraseInicio = null, fraseFin = null;
   let ocupado = false, intervalo = 66;  // ~15 cuadros por segundo como maximo
   let run = 0, faceRun = 0, seenOpen = false, closed = false, lastFace = null, fraseTimer = null;
 
@@ -341,6 +344,7 @@ async function grabar(reto) {
       return;
     }
     fase = "frase";
+    fraseInicio = (performance.now() - inicioRec) / 1000;
     $("sCamara").classList.add("leyendo");
     mostrarPaso("frase", "Ahora lee la frase en voz alta", "Mirando a la cámara, con voz clara.");
     $("frase").textContent = reto.phrase;
@@ -420,6 +424,7 @@ async function grabar(reto) {
 
   function terminar() {
     if (fase === "fin") return;
+    if (fase === "frase") fraseFin = (performance.now() - inicioRec) / 1000;
     fase = "fin";
     clearTimeout(fraseTimer);
     $("btnListo").hidden = true;
@@ -435,7 +440,7 @@ async function grabar(reto) {
     const blob = new Blob(chunks, { type: mime || "video/webm" });
     if (repeticionUrl) URL.revokeObjectURL(repeticionUrl);
     repeticionUrl = URL.createObjectURL(blob);
-    subir(blob, mime);
+    subir(blob, mime, { fraseInicio, fraseFin });
   };
 
   function tick(now) {
@@ -484,10 +489,12 @@ async function grabar(reto) {
   requestAnimationFrame(tick);
 }
 
-async function subir(blob, mime) {
+async function subir(blob, mime, tiempos = {}) {
   verificando();
   const fd = new FormData();
   fd.append("video", blob, `intento.${(mime || "").includes("mp4") ? "mp4" : "webm"}`);
+  if (tiempos.fraseInicio != null) fd.append("frase_inicio", tiempos.fraseInicio.toFixed(2));
+  if (tiempos.fraseFin != null) fd.append("frase_fin", tiempos.fraseFin.toFixed(2));
   try {
     await api("/video", { method: "POST", body: fd });
   } catch (e) {

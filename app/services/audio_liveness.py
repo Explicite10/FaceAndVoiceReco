@@ -75,6 +75,7 @@ def _empty_score(expected: str) -> dict:
         "heard_normalized": "",
         "missing_words": expected_norm.split(),
         "extra_words": [],
+        "ignored_words": [],
     }
 
 
@@ -104,6 +105,7 @@ def _build_response(
         },
         "missing_words": score["missing_words"],
         "extra_words": score["extra_words"],
+        "ignored_words": score.get("ignored_words", []),
         "audio": audio_info,
         "asr": {
             "language": asr["language"] if asr else None,
@@ -123,10 +125,34 @@ def _build_response(
     }
 
 
+# Margen alrededor del tramo de la frase: la persona puede empezar a hablar un
+# poco antes de que aparezca en pantalla, y terminar despues de presionar el boton.
+VENTANA_ANTES_SEC = 0.5
+VENTANA_DESPUES_SEC = 1.0
+VENTANA_MIN_SEC = 1.5
+
+
+def recortar_ventana(audio: np.ndarray, ventana: tuple[float, float | None] | None) -> tuple[np.ndarray, dict | None]:
+    """Deja solo el audio del tramo de la frase. Si el tramo no tiene sentido, devuelve todo."""
+    if not ventana:
+        return audio, None
+    duracion = len(audio) / SAMPLE_RATE
+    inicio, fin = ventana
+    a = max(0.0, inicio - VENTANA_ANTES_SEC)
+    b = min(duracion, (fin + VENTANA_DESPUES_SEC) if fin is not None else duracion)
+    if b - a < VENTANA_MIN_SEC:
+        return audio, {"usada": False, "motivo": "tramo_muy_corto"}
+    return audio[int(a * SAMPLE_RATE):int(b * SAMPLE_RATE)], {"usada": True, "inicio_sec": round(a, 2), "fin_sec": round(b, 2)}
+
+
 async def verify_voice_from_path(
     video_path: str,
     expected_phrase: str | None = None,
+    ventana: tuple[float, float | None] | None = None,
 ) -> dict:
+    """Transcribe y califica la frase. Con `ventana` (segundos del video donde se
+    leyo) solo se escucha ese tramo: lo dicho antes, durante los gestos, no cuenta.
+    """
     t0 = time.time()
     expected = (expected_phrase or settings.expected_phrase).strip()
     if not expected:
@@ -168,6 +194,11 @@ async def verify_voice_from_path(
             signals=[f"audio_muy_largo (>{settings.audio_max_duration_sec}s)"],
             elapsed_ms=int((time.time() - t0) * 1000),
         )
+
+    # Los limites de duracion se revisan con el video completo; la voz, solo en la frase.
+    audio, ventana_info = recortar_ventana(audio, ventana)
+    audio_info["ventana_frase"] = ventana_info
+    duration = len(audio) / SAMPLE_RATE
 
     speech_sec, n_chunks = await asyncio.to_thread(_measure_speech, audio)
     speech_ratio = speech_sec / duration if duration else 0.0

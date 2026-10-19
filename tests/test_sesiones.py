@@ -289,6 +289,27 @@ def test_conversion_real_a_mp4(tmp_path):
     assert open(destino, "rb").read()[4:8] == b"ftyp"
 
 
+async def test_la_pagina_manda_el_tramo_de_la_frase(entorno, monkeypatch):
+    recibido = {}
+
+    async def analizar(*args, **kwargs):
+        recibido.update(kwargs)
+        return _informe(True)
+
+    monkeypatch.setattr(sesiones, "analyze_video", analizar)
+    s = await _crear(entorno)
+    token, c = _token(s), entorno["cliente"]
+    assert (await c.post(f"/api/v1/captura/{token}/reto")).status_code == 200
+    r = await c.post(f"/api/v1/captura/{token}/video", files={"video": ("v.webm", b"x" * 10, "video/webm")},
+                     data={"frase_inicio": "9.40", "frase_fin": "17.25"})
+    assert r.status_code == 202
+    for _ in range(50):
+        await asyncio.sleep(0.02)
+        if recibido:
+            break
+    assert recibido["ventana_frase"] == (9.4, 17.25)
+
+
 async def test_video_sin_reto(entorno):
     s = await _crear(entorno)
     r = await entorno["cliente"].post(f"/api/v1/captura/{_token(s)}/video",

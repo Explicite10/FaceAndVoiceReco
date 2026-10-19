@@ -320,13 +320,14 @@ async def finalizar(s: Sesion) -> None:
     await _persistir(s)
 
 
-async def _procesar(s: Sesion, video_path: str, reto: dict) -> None:
+async def _procesar(s: Sesion, video_path: str, reto: dict, ventana: tuple[float, float | None] | None = None) -> None:
     t0 = time.time()
     informe = None
     datos_evidencia = None
     try:
         async with _procesamiento:
-            informe = await analyze_video(video_path, s.id_emb, reto["phrase"], s.umbral_rostro, reto, t0)
+            informe = await analyze_video(video_path, s.id_emb, reto["phrase"], s.umbral_rostro, reto, t0,
+                                          ventana_frase=ventana)
             # Solo el intento que decide la sesion: los anteriores no se entregan.
             final = bool(informe and informe["result"]["approved"]) or s.intentos >= s.max_intentos
             if final and s.pide_evidencia:
@@ -655,7 +656,13 @@ async def nuevo_reto(token: str):
 
 
 @captura_api.post("/{token}/video", status_code=202)
-async def subir_video(token: str, video: UploadFile = File(...)):
+async def subir_video(
+    token: str,
+    video: UploadFile = File(...),
+    # Segundos del video en que aparecio la frase y en que termino (los mide la pagina).
+    frase_inicio: float | None = Form(None, ge=0, le=600),
+    frase_fin: float | None = Form(None, ge=0, le=600),
+):
     """Recibe la grabacion del reto vigente; se analiza en segundo plano."""
     s = _sesion_por_token(token)
     async with s.lock:
@@ -670,7 +677,8 @@ async def subir_video(token: str, video: UploadFile = File(...)):
         s.estado = "procesando"
         s.motivos = []
         await _persistir(s)
-    asyncio.get_running_loop().create_task(_procesar(s, path, reto))
+    ventana = (frase_inicio, frase_fin) if frase_inicio is not None else None
+    asyncio.get_running_loop().create_task(_procesar(s, path, reto, ventana))
     return _config_publica(s)
 
 

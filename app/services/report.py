@@ -178,11 +178,15 @@ def _voice_details(voice: dict) -> dict | None:
             "word_error_rate": r["scores"]["wer"] if asr_ran else None,
             "missing_words": r["missing_words"] if asr_ran else [],
             "extra_words": r["extra_words"],
+            # Dichas antes o despues de la frase: no cuentan para el porcentaje.
+            "ignored_words": r.get("ignored_words", []),
         },
         "audio": {
             "duration_sec": r["audio"]["duration_sec"],
             "speech_sec": r["audio"]["speech_duration_sec"],
             "speech_ratio": r["audio"]["speech_ratio"],
+            # Tramo del video que se escucho para la frase (null: todo el audio).
+            "phrase_window": r["audio"].get("ventana_frase"),
         },
         "transcription": {
             "language": r["asr"]["language"],

@@ -112,6 +112,7 @@ Si no se mandan `logo` ni los colores, la pantalla usa el diseño genérico. El 
 
 - Conviene que cambie en cada sesión, por ejemplo con el folio del trámite o el nombre del cliente. Así no se puede reusar una grabación.
 - Los números van mejor en palabras o de máximo tres cifras: la transcripción escribe "4,521" y eso se compara mal.
+- Solo se califica lo que el usuario dice mientras la frase está en pantalla: lo que diga durante los gestos, o un "listo" al final, no cuenta. Se aprueba con 85% de coincidencia o más.
 - La lectura debe caber en el video junto con los gestos, por eso el máximo es 50 palabras (unos 25 segundos leyendo). Entre más larga, más fácil que el usuario se trabe: si se puede, que sea corta.
 
 ### Ejemplo

@@ -196,6 +196,7 @@ function mostrar(d, duracion) {
       <tr><td>Se escuchó</td><td>${esc(d.transcript) || "—"}</td></tr>
       <tr><td>Palabras que faltaron</td><td>${etiquetas(d.missing_words)}</td></tr>
       <tr><td>Palabras de más o distintas</td><td>${etiquetas(d.extra_words)}</td></tr>
+      <tr><td>Ignoradas (antes o después de la frase)</td><td>${etiquetas(d.ignored_words)}</td></tr>
       <tr><td>Duración del audio</td><td>${d.audio.duration_sec} s, con voz ${d.audio.speech_duration_sec} s</td></tr>
       <tr><td>Mínimo para pasar</td><td>${UMBRAL}%</td></tr>
       ${d.signals && d.signals.length ? `<tr><td>Avisos</td><td>${etiquetas(d.signals)}</td></tr>` : ""}

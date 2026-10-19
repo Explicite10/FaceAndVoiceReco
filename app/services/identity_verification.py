@@ -50,6 +50,28 @@ async def _compare_face(id_emb: np.ndarray | CheckError, video_path: str, thresh
     return await compare_id_and_video_path(id_emb, video_path, threshold_percent)
 
 
+# Tolerancia entre el reloj de la pagina y los tiempos que mide el servidor.
+_TOLERANCIA_VENTANA_SEC = 1.0
+
+
+def ventana_valida(ventana: tuple[float, float | None] | None, gestures: dict | None) -> tuple[float, float | None] | None:
+    """El tramo de la frase que manda la pagina, solo si cuadra con el video.
+
+    Debe empezar despues del ultimo gesto que el servidor encontro en el video:
+    asi no se puede apuntar el tramo a otra parte para esconder algo. Si no
+    cuadra, se escucha el audio completo, como antes.
+    """
+    if not ventana or not gestures or not gestures.get("ok"):
+        return None
+    inicio, fin = ventana
+    ultimo = gestures["result"].get("last_gesture_sec")
+    if ultimo is None or inicio < ultimo - _TOLERANCIA_VENTANA_SEC:
+        return None
+    if fin is not None and fin <= inicio:
+        fin = None
+    return (inicio, fin)
+
+
 async def embed_id_image(np_id: np.ndarray) -> np.ndarray:
     return await asyncio.to_thread(id_embedding, np_id)
 
@@ -61,6 +83,7 @@ async def analyze_video(
     match_threshold_percent: float,
     challenge: dict | None,
     started: float,
+    ventana_frase: tuple[float, float | None] | None = None,
 ) -> dict:
     """Voz, rostro, prueba de vida y gestos sobre un video ya guardado en disco.
 
@@ -68,13 +91,15 @@ async def analyze_video(
     asi ese caso sale en el reporte como cualquier otra validacion fallida.
     """
     # Secuencial a proposito: todo es CPU-bound y en paralelo se pelea por los
-    # mismos cores sin terminar antes.
-    voice = await _run_part(verify_voice_from_path(video_path, expected_phrase))
+    # mismos cores sin terminar antes. Los gestos van antes que la voz: con ellos
+    # se valida el tramo de la frase que manda la pagina.
     face = await _run_part(_compare_face(id_emb, video_path, match_threshold_percent))
     # Una sola pasada de MediaPipe para labios y gestos.
     track = await asyncio.to_thread(track_video, video_path, challenge is not None)
-    liveness = await _run_part(check_liveness(video_path, face, track))
     gestures = await _run_part(_check_gestures(track, challenge["gestures"])) if challenge else None
+    voice = await _run_part(verify_voice_from_path(video_path, expected_phrase, ventana_valida(ventana_frase, gestures)))
+    # Los labios se miden en todo el video: el silencio de los gestos es su referencia.
+    liveness = await _run_part(check_liveness(video_path, face, track))
 
     return build_report(
         face=face,
