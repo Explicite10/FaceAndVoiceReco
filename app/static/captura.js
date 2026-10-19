@@ -1,9 +1,10 @@
 // Captura de la prueba de vida para una sesion (/captura/<token>).
 //
-// Flujo: inicio -> camara (encuadre, gestos, frase; una sola grabacion) ->
-// verificando -> resultado. Si un intento no pasa y quedan intentos, se repite
-// con un reto nuevo. MediaPipe en el navegador solo guia al usuario: el
-// servidor vuelve a revisar todo en el video.
+// Flujo: inicio -> camara (encuadre; el usuario presiona "Empezar" y, tras una
+// cuenta 3-2-1, una sola grabacion con gestos y frase) -> verificando ->
+// resultado. Si un intento no pasa y quedan intentos, se repite con un reto
+// nuevo. MediaPipe en el navegador solo guia al usuario: el servidor vuelve a
+// revisar todo en el video. Mientras algo carga, un cargador cubre la pantalla.
 
 const $ = (id) => document.getElementById(id);
 const token = location.pathname.split("/").filter(Boolean).pop();
@@ -29,11 +30,29 @@ const HINTS = {
 const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const ICON_BAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>';
 
-const SCREENS = ["sCargando", "sInicio", "sCamara", "sProcesando", "sResultado"];
+const SCREENS = ["sInicio", "sCamara", "sResultado"];
 const show = (id) => SCREENS.forEach((s) => { $(s).hidden = s !== id; });
+
+// Cargador a pantalla completa: atrapa los toques hasta que se quite.
+function cargando(titulo, texto = "") {
+  $("cargadorTitulo").textContent = titulo;
+  $("cargadorTexto").textContent = texto;
+  $("cargador").hidden = false;
+  document.body.classList.add("bloqueado");
+}
+function listo() {
+  $("cargador").hidden = true;
+  document.body.classList.remove("bloqueado");
+}
+function verificando() {
+  show(null);
+  cargando("Verificando tu identidad", "Esto puede tardar hasta un minuto. No cierres esta ventana.");
+}
 
 let stream = null;
 let faceLm = null, handLm = null, detector = null;
+// Ultima grabacion, solo en memoria del navegador: se muestra si el intento no pasa.
+let repeticionUrl = null;
 
 // ---------------------------------------------------------------- servidor
 
@@ -102,6 +121,7 @@ async function arrancar() {
     return;
   }
   detector = loadDetector();
+  listo();
   ruta(config, false);
 }
 
@@ -111,7 +131,7 @@ function ruta(c, despuesDeIntento) {
       return despuesDeIntento ? reintento(c) : inicio(c);
     case "procesando":
     case "entregando":
-      show("sProcesando");
+      verificando();
       return esperar();
     case "error_entrega":
       return errorEntrega();
@@ -121,7 +141,6 @@ function ruta(c, despuesDeIntento) {
 }
 
 function inicio(c) {
-  $("proyecto").textContent = c.proyecto ? `Solicitado por ${c.proyecto}` : "";
   if (c.intentos > 0) {
     const aviso = $("aviso");
     aviso.replaceChildren();
@@ -133,6 +152,8 @@ function inicio(c) {
     aviso.append(titulo, ul);
     aviso.hidden = false;
   }
+  // En un reintento ya conoce el proceso: se muestra lo que fallo y el boton, sin la explicacion.
+  $("sInicio").classList.toggle("repite", c.intentos > 0);
   $("btnComenzar").onclick = iniciarIntento;
   show("sInicio");
 }
@@ -156,22 +177,50 @@ async function abrirCamara() {
 
 async function iniciarIntento() {
   $("btnComenzar").disabled = true;
+  cargando("Preparando tu cámara", "Si tu navegador lo pide, permite el acceso a la cámara y al micrófono.");
   try {
     if (!(await abrirCamara())) return;
     let reto;
     try {
       reto = await api("/reto", { method: "POST" });
     } catch (e) {
-      if (e.status === 409) return ruta(await api(), true);
+      if (e.status === 409) { listo(); return ruta(await api(), true); }
       resultado(false, "No pudimos iniciar", e.message, "Reintentar", iniciarIntento);
       return;
     }
-    // El detector carga desde que abre la pagina; no se espera de mas.
-    await Promise.race([detector, new Promise((r) => setTimeout(r, 6000))]);
-    grabar(reto);
+    await grabar(reto);
   } finally {
     $("btnComenzar").disabled = false;
   }
+}
+
+const esperarMs = (ms) => new Promise((r) => setTimeout(r, ms));
+const siguienteCuadro = (video) => Promise.race([
+  new Promise((r) => (video.requestVideoFrameCallback ? video.requestVideoFrameCallback(() => r()) : requestAnimationFrame(() => r()))),
+  esperarMs(250),
+]);
+
+// Muchas camaras entregan cuadros negros el primer par de segundos (sobre todo
+// la primera vez en un equipo). Se espera a ver imagen de verdad: varios cuadros
+// seguidos con algo de brillo. Si el cuarto esta muy oscuro, se sigue al tope.
+async function camaraLista(video) {
+  try { await video.play(); } catch { /* autoplay muted no deberia fallar */ }
+  const lienzo = document.createElement("canvas");
+  lienzo.width = 32; lienzo.height = 24;
+  const ctx = lienzo.getContext("2d", { willReadFrequently: true });
+  const tope = performance.now() + 8000;
+  let buenos = 0;
+  while (performance.now() < tope) {
+    await siguienteCuadro(video);
+    if (video.readyState < 2 || !video.videoWidth) continue;
+    ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
+    const d = ctx.getImageData(0, 0, lienzo.width, lienzo.height).data;
+    let suma = 0;
+    for (let i = 0; i < d.length; i += 4) suma += d[i] + d[i + 1] + d[i + 2];
+    buenos = suma / (d.length / 4 * 3) > 14 ? buenos + 1 : 0;
+    if (buenos >= 5) return true;
+  }
+  return false;
 }
 
 function pickMime() {
@@ -197,7 +246,7 @@ const ETIQUETAS = {
 
 const mmss = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
-function grabar(reto) {
+async function grabar(reto) {
   const gestos = reto.gestures;
   const total = gestos.length + 1;  // gestos + frase
   const video = $("video");
@@ -225,22 +274,37 @@ function grabar(reto) {
     $("instruccion").textContent = texto;
     $("pista").textContent = pista;
   };
-  mostrarPaso("rostro", "Mira de frente a la cámara", "La grabación empieza sola cuando te veamos.");
-  $("pasoN").textContent = "Preparando la cámara";
+  mostrarPaso("rostro", "Coloca tu rostro dentro del óvalo", "Cuando estés listo, presiona Empezar grabación.");
+  $("pasoN").textContent = "Prepárate";
   $("fraseBox").hidden = true;
   $("btnListo").hidden = true;
   $("rec").hidden = true;
   $("camAviso").hidden = false;
+  $("camAviso").textContent = "Coloca tu rostro dentro del óvalo";
   $("bien").hidden = true;
+  $("cuentaAtras").hidden = true;
+  $("guia").className = "guide";
   $("sCamara").classList.remove("leyendo");
+  const btnGrabar = $("btnGrabar");
+  btnGrabar.hidden = false;
+  btnGrabar.disabled = true;
+  btnGrabar.textContent = "Empezar grabación";
+  // La pantalla se arma debajo del cargador: asi el video ya se esta pintando.
   show("sCamara");
+  const [hayImagen] = await Promise.all([
+    camaraLista(video),
+    // El detector carga desde que abre la pagina; no se espera de mas.
+    Promise.race([detector, esperarMs(6000)]),
+  ]);
+  if (!hayImagen) $("pista").textContent = "Se ve muy oscuro. Busca más luz para que te veamos bien.";
+  listo();
 
   const mime = pickMime();
   const chunks = [];
   const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
   recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
 
-  // fase: encuadre -> gesto -> frase -> fin
+  // fase: encuadre -> cuenta -> gesto -> frase -> fin
   let fase = "encuadre", paso = 0, desde = performance.now(), inicioRec = 0, ultimo = 0;
   let run = 0, faceRun = 0, seenOpen = false, closed = false, lastFace = null, fraseTimer = null;
 
@@ -292,9 +356,40 @@ function grabar(reto) {
     inicioRec = performance.now();
     $("rec").hidden = false;
     $("camAviso").hidden = true;
+    $("guia").className = "guide grabando";
     fase = "gesto";
     paso = -1;
     siguientePaso();
+  }
+
+  // El usuario decide cuando empieza; una cuenta corta le da tiempo de acomodarse.
+  btnGrabar.onclick = () => {
+    if (fase !== "encuadre") return;
+    fase = "cuenta";
+    btnGrabar.hidden = true;
+    $("camAviso").hidden = true;
+    const numero = $("cuentaAtras");
+    let n = 3;
+    const tic = () => {
+      if (n === 0) { numero.hidden = true; empezarGrabacion(); return; }
+      numero.textContent = n;
+      numero.hidden = false;
+      numero.classList.remove("tic");
+      void numero.offsetWidth;  // reinicia la animacion
+      numero.classList.add("tic");
+      n -= 1;
+      setTimeout(tic, 900);
+    };
+    tic();
+  };
+
+  // Solo deja empezar con el rostro a la vista (sin detector, de inmediato).
+  function encuadre(veRostro) {
+    const ok = !faceLm || veRostro;
+    btnGrabar.disabled = !ok;
+    $("guia").classList.toggle("ok", !!faceLm && veRostro);
+    $("camAviso").textContent = ok ? "¡Bien! Ya puedes empezar" : "Coloca tu rostro dentro del óvalo";
+    $("instruccion").textContent = ok ? "Todo listo para empezar" : "Coloca tu rostro dentro del óvalo";
   }
 
   function cumplido(gesto, f, hands) {
@@ -332,7 +427,10 @@ function grabar(reto) {
 
   recorder.onstop = () => {
     $("rec").hidden = true;
-    subir(new Blob(chunks, { type: mime || "video/webm" }), mime);
+    const blob = new Blob(chunks, { type: mime || "video/webm" });
+    if (repeticionUrl) URL.revokeObjectURL(repeticionUrl);
+    repeticionUrl = URL.createObjectURL(blob);
+    subir(blob, mime);
   };
 
   function tick(now) {
@@ -354,8 +452,7 @@ function grabar(reto) {
 
       if (fase === "encuadre") {
         faceRun = f ? faceRun + 1 : 0;
-        // Sin detector se espera un momento y se empieza.
-        if (faceRun >= TH.faceFrames || (!faceLm && now - desde > 1500)) empezarGrabacion();
+        encuadre(faceRun >= TH.faceFrames);
       } else if (fase === "gesto") {
         const listo = faceLm ? cumplido(gesto, f, hands) : now - desde > 3500;
         if (listo) siguientePaso();
@@ -368,7 +465,7 @@ function grabar(reto) {
 }
 
 async function subir(blob, mime) {
-  show("sProcesando");
+  verificando();
   const fd = new FormData();
   fd.append("video", blob, `intento.${(mime || "").includes("mp4") ? "mp4" : "webm"}`);
   try {
@@ -388,7 +485,7 @@ async function subir(blob, mime) {
 
 async function esperar() {
   for (;;) {
-    await new Promise((r) => setTimeout(r, 2000));
+    await esperarMs(2000);
     let c;
     try { c = await api(); } catch { continue; }
     if (c.estado !== "procesando" && c.estado !== "entregando") return ruta(c, true);
@@ -402,7 +499,8 @@ function llenarMotivos(ul, motivos = []) {
   ul.hidden = motivos.length === 0;
 }
 
-function resultado(ok, titulo, texto, boton, accion, motivos = []) {
+function resultado(ok, titulo, texto, boton, accion, motivos = [], conRepeticion = false) {
+  listo();
   $("icono").className = `badge ${ok ? "ok" : "bad"}`;
   $("icono").innerHTML = ok ? ICON_OK : ICON_BAD;
   $("resTitulo").textContent = titulo;
@@ -413,22 +511,35 @@ function resultado(ok, titulo, texto, boton, accion, motivos = []) {
   if (boton) {
     btn.textContent = boton;
     btn.disabled = false;
-    btn.onclick = () => { btn.disabled = true; accion(); };
+    btn.onclick = () => { btn.disabled = true; repeticion(false); accion(); };
   }
+  repeticion(conRepeticion);
   show("sResultado");
+}
+
+// Muestra (o quita) la repeticion local del ultimo intento. No sale del navegador.
+function repeticion(mostrar) {
+  const v = $("repeticionVideo");
+  const visible = mostrar && !!repeticionUrl;
+  $("repeticion").hidden = !visible;
+  if (visible) {
+    if (v.src !== repeticionUrl) v.src = repeticionUrl;
+  } else {
+    v.pause();
+  }
 }
 
 function reintento(c) {
   resultado(false, "No pudimos verificarte",
     `Te quedan ${c.intentos_restantes} ${c.intentos_restantes === 1 ? "intento" : "intentos"}.`,
-    "Intentar de nuevo", iniciarIntento, c.motivos);
+    "Intentar de nuevo", iniciarIntento, c.motivos, true);
 }
 
 function errorEntrega() {
   resultado(false, "No se pudo registrar el resultado",
     "Tu verificación terminó, pero no pudimos enviarla. Intenta de nuevo en un momento.",
     "Reintentar envío", async () => {
-      show("sProcesando");
+      verificando();
       try { ruta(await api("/reintentar-entrega", { method: "POST" }), true); }
       catch { ruta(await api(), true); }
     });
@@ -446,20 +557,23 @@ function terminado(c) {
     );
   }
   const seguir = c.redireccion && !EN_IFRAME;
-  const despues = seguir ? "Te regresamos en un momento…" : "Ya puedes cerrar esta ventana.";
+  // Si no paso, no se redirige solo: que pueda ver su repeticion y siga con el boton.
+  const conRepeticion = c.estado === "completada" && !c.aprobada && !!repeticionUrl;
+  const despues = !seguir ? "Ya puedes cerrar esta ventana."
+    : conRepeticion ? "Presiona Continuar para seguir con tu trámite." : "Te regresamos en un momento…";
   const continuar = seguir ? () => location.replace(c.redireccion) : null;
 
   if (c.estado === "completada" && c.aprobada) {
     resultado(true, "¡Listo!", `Verificamos tu identidad. ${despues}`, seguir && "Continuar", continuar);
   } else if (c.estado === "completada") {
     resultado(false, "No fue posible verificar tu identidad",
-      `Te indicarán los siguientes pasos. ${despues}`, seguir && "Continuar", continuar, c.motivos);
+      `Te indicarán los siguientes pasos. ${despues}`, seguir && "Continuar", continuar, c.motivos, true);
   } else if (c.estado === "expirada") {
     resultado(false, "El enlace venció", "Vuelve a iniciar desde el sitio donde comenzaste tu trámite.");
   } else {
     resultado(false, "La verificación se canceló", despues, seguir && "Continuar", continuar);
   }
-  if (seguir) setTimeout(continuar, 3000);
+  if (seguir && !conRepeticion) setTimeout(continuar, 3000);
 }
 
 arrancar();

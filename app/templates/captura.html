@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="robots" content="noindex" />
-    <title>Prueba de vida</title>
+    <title>Verificación de identidad</title>
     <link rel="stylesheet" href="/static/captura.css" />
     {% if marca.primario or marca.secundario %}
     <style>
@@ -18,83 +18,130 @@
   </head>
   <body data-min="{{ min_duration_sec }}" data-max="{{ max_duration_sec }}"
         data-turn="{{ turn_offset }}" data-blink-closed="{{ blink_closed }}" data-blink-open="{{ blink_open }}">
-    <main class="app">
-      {% if marca.logo_url %}
-      <header class="brand"><img src="{{ marca.logo_url }}" alt="{{ marca.proyecto }}" /></header>
-      {% endif %}
-
-      <section id="sCargando" class="screen center">
-        <div class="spinner" aria-hidden="true"></div>
-      </section>
-
-      <section id="sInicio" class="screen" hidden>
-        <p class="eyebrow" id="proyecto"></p>
-        <h1>Verifiquemos que eres tú</h1>
-        <p class="lead">Te pediremos tres movimientos sencillos y leer una frase en voz alta. Toma menos de un minuto.</p>
-        <ul class="tips">
-          <li>Busca buena luz</li>
-          <li>Rostro descubierto</li>
-          <li>Lugar sin ruido</li>
-        </ul>
-        <div class="notice" id="aviso" hidden></div>
-        <div class="actions">
-          <button class="btn primary" id="btnComenzar">Comenzar</button>
-          <p class="fine">Al continuar aceptas que se use tu imagen y tu voz solo para verificar tu identidad.</p>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar-brand">
+          {% if marca.logo_url %}
+          <img src="{{ marca.logo_url }}" alt="{{ marca.proyecto }}" />
+          {% elif marca.proyecto %}
+          <span class="topbar-name">{{ marca.proyecto }}</span>
+          {% endif %}
         </div>
-      </section>
+        <div class="topbar-secure">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+          <span>Verificación segura</span>
+        </div>
+      </header>
 
-      <section id="sCamara" class="screen camera" hidden>
-        <div class="cam-layout">
-          <!-- La vista previa conserva la proporcion real de la camara: se ve todo lo que se analiza. -->
-          <div class="stage" id="stage">
-            <video id="video" autoplay muted playsinline></video>
-            <div class="rec" id="rec" hidden><span class="dot"></span><span id="recTiempo">0:00</span></div>
-            <div class="cam-hint" id="camAviso">Mantén todo tu rostro a la vista</div>
-            <div class="burst" id="bien" hidden aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-            </div>
+      <main class="content">
+        <section id="sInicio" class="screen intro" hidden>
+          <div class="intro-head">
+            <p class="eyebrow">Verificación de identidad</p>
+            <h1>Confirma que eres tú</h1>
+            <p class="lead">Grabaremos un video corto: harás tres movimientos sencillos y leerás una frase en voz alta. Toma menos de un minuto.</p>
           </div>
 
-          <aside class="panel">
-            <p class="step-count" id="pasoN">Preparando la cámara</p>
-            <ol class="steps" id="progreso" aria-label="Pasos"></ol>
+          <ol class="howto" aria-label="Cómo funciona">
+            <li>
+              <span class="howto-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.55-2.28A1 1 0 0121 8.62v6.76a1 1 0 01-1.45.9L15 14"/><rect x="3" y="6" width="12" height="12" rx="2"/></svg></span>
+              <div><p class="howto-title">Activa tu cámara</p><p class="howto-text">Coloca tu rostro dentro del óvalo.</p></div>
+            </li>
+            <li>
+              <span class="howto-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V6.5a1.5 1.5 0 013 0V12M11 11V4.5a1.5 1.5 0 013 0V11M14 11V6a1.5 1.5 0 013 0v7"/><path d="M17 13a1.5 1.5 0 013 0v1.5A7.5 7.5 0 0112.5 22h-.8a6.5 6.5 0 01-5.4-2.9l-2.6-3.9a1.5 1.5 0 012.4-1.8L8 15"/></svg></span>
+              <div><p class="howto-title">Sigue las indicaciones</p><p class="howto-text">Tres movimientos: girar, parpadear o mostrar la mano.</p></div>
+            </li>
+            <li>
+              <span class="howto-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></span>
+              <div><p class="howto-title">Lee la frase</p><p class="howto-text">En voz alta, mirando a la cámara.</p></div>
+            </li>
+          </ol>
 
-            <div class="step-card" aria-live="polite">
-              <div class="step-icon" id="pasoIcono" aria-hidden="true"></div>
-              <div class="step-body">
-                <p class="step-text" id="instruccion">Mira de frente a la cámara</p>
-                <p class="hint" id="pista">La grabación empieza sola cuando te veamos.</p>
+          <ul class="tips" aria-label="Recomendaciones">
+            <li>Buena iluminación</li>
+            <li>Rostro descubierto</li>
+            <li>Lugar sin ruido</li>
+          </ul>
+
+          <div class="notice" id="aviso" hidden></div>
+
+          <div class="actions">
+            <button class="btn primary" id="btnComenzar">Comenzar verificación</button>
+            <p class="fine">Al continuar aceptas que se use tu imagen y tu voz solo para verificar tu identidad.</p>
+          </div>
+        </section>
+
+        <section id="sCamara" class="screen camera" hidden>
+          <div class="cam-layout">
+            <!-- La vista previa conserva la proporcion real de la camara: se ve todo lo que se analiza. -->
+            <div class="stage" id="stage">
+              <video id="video" autoplay muted playsinline></video>
+              <div class="guide" id="guia" aria-hidden="true"><span></span></div>
+              <div class="rec" id="rec" hidden><span class="dot"></span><span id="recTiempo">0:00</span></div>
+              <div class="cam-hint" id="camAviso">Coloca tu rostro dentro del óvalo</div>
+              <div class="countdown-big" id="cuentaAtras" hidden aria-live="assertive"></div>
+              <div class="burst" id="bien" hidden aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
               </div>
             </div>
 
-            <div class="phrase-card" id="fraseBox" hidden>
-              <p class="phrase-label">Lee en voz alta</p>
-              <p class="phrase" id="frase"></p>
-              <div class="countdown" aria-hidden="true"><span id="cuenta"></span></div>
+            <aside class="panel">
+              <div class="panel-head">
+                <p class="step-count" id="pasoN">Prepárate</p>
+                <ol class="steps" id="progreso" aria-label="Pasos"></ol>
+              </div>
+
+              <div class="step-card" aria-live="polite">
+                <div class="step-icon" id="pasoIcono" aria-hidden="true"></div>
+                <div class="step-body">
+                  <p class="step-text" id="instruccion">Mira de frente a la cámara</p>
+                  <p class="hint" id="pista"></p>
+                </div>
+              </div>
+
+              <div class="phrase-card" id="fraseBox" hidden>
+                <p class="phrase-label">Lee en voz alta</p>
+                <p class="phrase" id="frase"></p>
+                <div class="countdown" aria-hidden="true"><span id="cuenta"></span></div>
+              </div>
+
+              <button class="btn primary" id="btnGrabar" disabled>Empezar grabación</button>
+              <button class="btn primary" id="btnListo" hidden>Ya terminé de leer</button>
+            </aside>
+          </div>
+        </section>
+
+        <section id="sResultado" class="screen result" hidden>
+          <div class="result-card">
+            <div class="badge" id="icono" aria-hidden="true"></div>
+            <h2 id="resTitulo"></h2>
+            <p class="lead" id="resTexto"></p>
+            <ul class="reasons" id="motivos" hidden></ul>
+
+            <div class="replay" id="repeticion" hidden>
+              <p class="replay-label">Tu grabación</p>
+              <video id="repeticionVideo" controls playsinline preload="metadata"></video>
+              <p class="fine">Esta repetición solo se muestra en tu pantalla para que veas cómo salió.</p>
             </div>
 
-            <button class="btn primary" id="btnListo" hidden>Ya terminé de leer</button>
-          </aside>
-        </div>
-      </section>
+            <div class="actions">
+              <button class="btn primary" id="btnAccion" hidden></button>
+            </div>
+          </div>
+        </section>
+      </main>
 
-      <section id="sProcesando" class="screen center" hidden>
+      <footer class="footer">Tus datos se usan únicamente para verificar tu identidad.</footer>
+    </div>
+
+    <!-- Bloquea la pantalla mientras algo carga: no se puede tocar nada debajo. -->
+    <div class="overlay" id="cargador" role="status" aria-live="polite">
+      <div class="overlay-card">
         <div class="spinner" aria-hidden="true"></div>
-        <h2>Verificando…</h2>
-        <p class="lead">Esto puede tardar hasta un minuto. No cierres esta ventana.</p>
-      </section>
+        <p class="overlay-title" id="cargadorTitulo">Cargando</p>
+        <p class="overlay-text" id="cargadorTexto"></p>
+      </div>
+    </div>
 
-      <section id="sResultado" class="screen center" hidden>
-        <div class="badge" id="icono" aria-hidden="true"></div>
-        <h2 id="resTitulo"></h2>
-        <ul class="reasons" id="motivos" hidden></ul>
-        <p class="lead" id="resTexto"></p>
-        <div class="actions">
-          <button class="btn primary" id="btnAccion" hidden></button>
-        </div>
-      </section>
-
-    </main>
     <script type="module" src="/static/captura.js"></script>
   </body>
 </html>
