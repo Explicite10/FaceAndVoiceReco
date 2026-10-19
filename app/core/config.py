@@ -49,6 +49,10 @@ class Settings(BaseModel):
     # la foto). Cada request puede mandar el suyo en match_threshold_percent.
     # 70% equivale a similitud coseno ~0.41; 50% a 0.363.
     face_match_percent: float = float(os.getenv("FACE_MATCH_PERCENT", "70"))
+    # Con el tramo de la frase, la INE se compara solo ahi (de frente y quieto) y en
+    # los gestos se revisa que sea la misma persona que leyo, video contra video.
+    # 50% es el umbral publicado de SFace para "misma identidad" (coseno 0.363).
+    same_person_percent: float = float(os.getenv("SAME_PERSON_PERCENT", "50"))
 
     # ---------- Audio / voice liveness ----------
     # Frase fija, solo cuando REQUIRE_CHALLENGE=false y la solicitud no trae

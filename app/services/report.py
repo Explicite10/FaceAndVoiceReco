@@ -55,7 +55,7 @@ def _face_checks(face: dict) -> dict:
     mismatched = [s for s in segs if s["face_found"] and not s["is_match"]]
     mf = r["multiple_faces"]
 
-    return {
+    checks = {
         "id_face_detected": _passed("Se detectó la cara en la identificación."),
         "video_face_detected": _passed("Se detectó la cara en el video."),
         "face_in_all_segments": (
@@ -83,6 +83,34 @@ def _face_checks(face: dict) -> dict:
             if mf["detected"] else _passed("Solo aparece una persona en el video.")
         ),
     }
+    if r.get("mode") == "frase":
+        checks.update(_face_checks_por_frase(r))
+    return checks
+
+
+def _face_checks_por_frase(r: dict) -> dict:
+    """Con tramo de frase: la INE se compara en la frase y los gestos, contra la frase."""
+    frase = next((s for s in r["segments"] if s["role"] == "frase"), None)
+    gestos = [s for s in r["segments"] if s["role"] != "frase"]
+    sp = r["same_person"]
+    distintos = [s for s in gestos if s["face_found"] and not s["is_match"]]
+    sin_cara = [s for s in gestos if not s["face_found"]]
+    return {
+        "face_match": (
+            _passed(f"La cara coincide con la identificación mientras leía la frase ({frase['similarity_percent']}%).")
+            if r["id_match"] else
+            _failed("face_mismatch", f"La cara no coincide con la identificación mientras leía la frase "
+                                     f"({frase['similarity_percent']}%; mínimo {r['threshold_percent']:g}%).")
+        ),
+        "same_person": (
+            _passed(f"Es la misma persona en los gestos y en la frase (mínimo {sp['min_percent']}%).")
+            if sp["passed"] else
+            _skipped("no se vio la cara durante los gestos") if sin_cara and not distintos else
+            _failed("person_changed", "La persona de los gestos no parece la misma que leyó la frase en "
+                    + ", ".join(f"el tramo {s['index']} ({s['same_person_percent']}%)" for s in distintos)
+                    + f"; mínimo {sp['threshold_percent']:g}%.")
+        ),
+    }
 
 
 def _face_details(face: dict) -> dict | None:
@@ -105,9 +133,14 @@ def _face_details(face: dict) -> dict | None:
                 "similarity_score": s["raw_similarity"],
                 "similarity_percent": s["similarity_percent"] if s["face_found"] else None,
                 "match": s["is_match"],
+                # Con tramo de frase: "gestos" se comparan contra la frase, "frase" contra la INE.
+                "role": s.get("role"),
+                "same_person_percent": s.get("same_person_percent"),
+                "frontal": s.get("frontal"),
             }
             for s in r["segments"]
         ],
+        "same_person": r.get("same_person"),
         "faces_in_video": {
             "max_per_frame": mf["max_faces_in_frame"],
             "frames_with_multiple": mf["frames"],
@@ -396,6 +429,7 @@ _MOTIVOS = {
     "face_missing_in_segment": "Tu rostro no se vio durante todo el video. Mantente frente a la cámara.",
     "face_mismatch": "Tu rostro no coincide con la foto de la identificación.",
     "multiple_faces_detected": "Se detectó más de una persona. Asegúrate de estar solo frente a la cámara.",
+    "person_changed": "Debe ser la misma persona durante todo el video, frente a la cámara.",
     "audio_missing": "No se grabó el audio. Revisa el permiso del micrófono.",
     "audio_duration_invalid": "La grabación fue muy corta o muy larga.",
     "no_speech_detected": "No se escuchó tu voz. Habla más fuerte y cerca del micrófono.",
@@ -448,7 +482,11 @@ def build_summary(report: dict) -> dict:
     details = report["details"]
     checks = {g: report["checks"].get(g, {}) for g in ("face", "voice", "liveness", "challenge")}
     face, voice, live, chal = details.get("face"), details.get("voice"), details.get("liveness"), details.get("challenge")
-    segments = [s["similarity_percent"] for s in (face["segments"] if face else []) if s["face_detected"]]
+    # Con tramo de frase solo la frase se compara contra la INE: ese es el minimo.
+    con_ine = [s for s in (face["segments"] if face else []) if s["face_detected"]]
+    if any(s.get("role") == "frase" for s in con_ine):
+        con_ine = [s for s in con_ine if s.get("role") == "frase"]
+    segments = [s["similarity_percent"] for s in con_ine]
     return {
         "aprobada": report["result"]["approved"],
         "checks_fallidos": report["result"]["failed_checks"],
@@ -459,6 +497,8 @@ def build_summary(report: dict) -> dict:
             "similitud_minima_porcentaje": min(segments) if segments else None,
             "umbral_porcentaje": face["similarity"]["threshold_percent"] if face else None,
             "una_sola_persona": _flag(checks["face"].get("single_face")),
+            # Misma persona en los gestos y en la frase (null si no se pudo revisar por tramos).
+            "misma_persona": _flag(checks["face"].get("same_person")),
         },
         "frase": {
             "coincide": _flag(checks["voice"].get("phrase_match")),

@@ -44,10 +44,13 @@ async def _check_gestures(track: dict, gestures: list[str]) -> dict:
     return analyze_gestures(track, gestures)
 
 
-async def _compare_face(id_emb: np.ndarray | CheckError, video_path: str, threshold_percent: float) -> dict:
+async def _compare_face(
+    id_emb: np.ndarray | CheckError, video_path: str, threshold_percent: float,
+    ventana: tuple[float, float | None] | None = None,
+) -> dict:
     if isinstance(id_emb, CheckError):
         raise id_emb
-    return await compare_id_and_video_path(id_emb, video_path, threshold_percent)
+    return await compare_id_and_video_path(id_emb, video_path, threshold_percent, ventana)
 
 
 # Tolerancia entre el reloj de la pagina y los tiempos que mide el servidor.
@@ -91,13 +94,14 @@ async def analyze_video(
     asi ese caso sale en el reporte como cualquier otra validacion fallida.
     """
     # Secuencial a proposito: todo es CPU-bound y en paralelo se pelea por los
-    # mismos cores sin terminar antes. Los gestos van antes que la voz: con ellos
-    # se valida el tramo de la frase que manda la pagina.
-    face = await _run_part(_compare_face(id_emb, video_path, match_threshold_percent))
+    # mismos cores sin terminar antes. Los gestos van primero: con ellos se valida
+    # el tramo de la frase que manda la pagina, y ese tramo lo usan rostro y voz.
     # Una sola pasada de MediaPipe para labios y gestos.
     track = await asyncio.to_thread(track_video, video_path, challenge is not None)
     gestures = await _run_part(_check_gestures(track, challenge["gestures"])) if challenge else None
-    voice = await _run_part(verify_voice_from_path(video_path, expected_phrase, ventana_valida(ventana_frase, gestures)))
+    ventana = ventana_valida(ventana_frase, gestures)
+    face = await _run_part(_compare_face(id_emb, video_path, match_threshold_percent, ventana))
+    voice = await _run_part(verify_voice_from_path(video_path, expected_phrase, ventana))
     # Los labios se miden en todo el video: el silencio de los gestos es su referencia.
     liveness = await _run_part(check_liveness(video_path, face, track))
 

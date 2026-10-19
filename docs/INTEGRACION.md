@@ -316,7 +316,8 @@ X-Vida-Firma:   t=1760000000,v1=8022fa202f251266714d9592170e7e0108d3607f928e7918
         "similitud_porcentaje": 88.4,
         "similitud_minima_porcentaje": 86.2,
         "umbral_porcentaje": 70.0,
-        "una_sola_persona": true
+        "una_sola_persona": true,
+        "misma_persona": true
       },
       "frase": {
         "coincide": true,
@@ -365,14 +366,15 @@ X-Vida-Firma:   t=1760000000,v1=8022fa202f251266714d9592170e7e0108d3607f928e7918
 
 | Campo | Qué dice |
 |---|---|
-| `rostro.coincide` | La cara del video es la de la INE. `similitud_minima_porcentaje` es el peor de los 3 tramos del video; todos deben llegar a `umbral_porcentaje` |
+| `rostro.coincide` | La cara del video es la de la INE. Se compara mientras el usuario lee la frase, que es cuando está quieto y de frente; `similitud_porcentaje` es ese parecido y debe llegar a `umbral_porcentaje`. **Usar `similitud_minima_porcentaje` para mostrar el dato que decide** |
+| `rostro.misma_persona` | Quien hizo los gestos es la misma persona que leyó la frase. Evita que alguien haga los gestos y otra persona (o un video) lea la frase. `null` si el video no trae el tramo de la frase; entonces la INE se compara en los 3 tramos del video y todos deben llegar al umbral |
 | `rostro.una_sola_persona` | Solo había una persona frente a la cámara |
 | `frase.coincide` | Dijo la frase. `transcripcion` es lo que se escuchó |
 | `vida.persona_real` | Es una persona real, no una foto, una pantalla ni una máscara |
 | `vida.labios_sincronizados` | La boca se movió al ritmo de la voz |
 | `gestos.completos` / `gestos.en_orden` | Hizo los tres gestos, y en el orden pedido |
 | `motivos` | Por qué no pasó, en palabras para el usuario. Vacío si se aprobó |
-| `checks_fallidos` | Los mismos motivos como códigos estables, ej. `face.face_match`, `voice.phrase_match`, `challenge.blink` |
+| `checks_fallidos` | Los mismos motivos como códigos estables, ej. `face.face_match`, `face.same_person`, `voice.phrase_match`, `challenge.blink` |
 
 `datos.resultado` es el reporte técnico completo, por si se quiere el detalle.
 

@@ -389,7 +389,7 @@ def test_resumen_con_reporte_completo():
     }
     r = build_summary(reporte)
     assert r["rostro"] == {"coincide": True, "similitud_porcentaje": 88.4, "similitud_minima_porcentaje": 86.2,
-                           "umbral_porcentaje": 70.0, "una_sola_persona": True}
+                           "umbral_porcentaje": 70.0, "una_sola_persona": True, "misma_persona": None}
     assert r["frase"]["coincidencia_porcentaje"] == 96.5 and r["frase"]["coincide"] is True
     assert r["vida"] == {"persona_real": True, "probabilidad_real_porcentaje": 93.1, "umbral_porcentaje": 50.0,
                          "labios_sincronizados": True}

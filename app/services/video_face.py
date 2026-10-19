@@ -29,6 +29,7 @@ def best_faces_by_segment(
     max_frames: int = 300,
     min_face_area: int = 60 * 60,
     padding_ratio: float = 0.30,
+    ventana: tuple[float, float | None] | None = None,
 ) -> tuple[list[dict | None], dict]:
     """Divide el video en tramos de igual duracion y devuelve la cara mas nitida de cada uno.
 
@@ -41,6 +42,10 @@ def best_faces_by_segment(
 
     Tambien devuelve cuantas caras hubo por cuadro, para detectar a otra persona
     en el video (solo se usa la mas grande para comparar).
+
+    Con `ventana` (segundos en que se leyo la frase) los tramos son por tiempo:
+    los primeros `segments - 1` reparten lo que hay antes de la frase (los gestos)
+    y el ultimo es la frase. Cada tramo lleva "role": "gestos" o "frase".
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -128,15 +133,28 @@ def best_faces_by_segment(
         cap.release()
 
     total = frame_index
+    if ventana:
+        inicio, fin = ventana
+        fin = fin if fin is not None else float("inf")
+        n_gestos = segments - 1
+        tramos = [
+            ("gestos", [c for c in candidates if inicio * k / n_gestos <= c[3]["time_sec"] < inicio * (k + 1) / n_gestos])
+            for k in range(n_gestos)
+        ] + [("frase", [c for c in candidates if inicio <= c[3]["time_sec"] <= fin])]
+    else:
+        tramos = [
+            (None, [c for c in candidates if total * k / segments < c[0] <= total * (k + 1) / segments])
+            for k in range(segments)
+        ]
+
     result: list[dict | None] = []
-    for k in range(segments):
-        lo, hi = total * k / segments, total * (k + 1) / segments
-        inside = [c for c in candidates if lo < c[0] <= hi]
+    for role, inside in tramos:
         if not inside:
             result.append(None)
             continue
         best = dict(elegir_cara(inside)[3])
         best["live_score"] = round(float(np.mean([c[2] for c in inside])), 4)
+        best["role"] = role
         result.append(best)
 
     stats = {
