@@ -6,6 +6,8 @@
 // nuevo. MediaPipe en el navegador solo guia al usuario: el servidor vuelve a
 // revisar todo en el video. Mientras algo carga, un cargador cubre la pantalla.
 
+import { analizar, cargar } from "./detector-core.js";
+
 const $ = (id) => document.getElementById(id);
 const token = location.pathname.split("/").filter(Boolean).pop();
 const API = `/api/v1/captura/${encodeURIComponent(token)}`;
@@ -15,10 +17,8 @@ const MAX_DUR = Number(ds.max);
 // Mismos umbrales que app/services/gestures.py.
 const TH = {
   turn: Number(ds.turn), closed: Number(ds.blinkClosed), open: Number(ds.blinkOpen),
-  turnFrames: 3, handFrames: 3, faceFrames: 8,
+  turnFrames: 3, handFrames: 3, faceFrames: 5,
 };
-const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35";
-const MODELS = "https://storage.googleapis.com/mediapipe-models";
 const EN_IFRAME = window.parent !== window;
 const HINTS = {
   turn_left: "Gira despacio, un poco más.",
@@ -50,7 +50,8 @@ function verificando() {
 }
 
 let stream = null;
-let faceLm = null, handLm = null, detector = null;
+// det: { analizar(video, t, conManos) -> Promise<{f, hands} | null>, enPagina } o null sin detector.
+let det = null, detector = null;
 // Ultima grabacion, solo en memoria del navegador: se muestra si el intento no pasa.
 let repeticionUrl = null;
 
@@ -70,44 +71,54 @@ async function api(path = "", opts = {}) {
 
 // ---------------------------------------------------------------- detector
 
-async function createTask(Task, fileset, model, opts) {
-  for (const delegate of ["GPU", "CPU"]) {
-    try {
-      return await Task.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: model, delegate }, runningMode: "VIDEO", ...opts,
-      });
-    } catch (e) { if (delegate === "CPU") throw e; }
-  }
+// En un Worker la deteccion no compite con el video por el hilo de la pagina:
+// en equipos lentos la camara se veia trabada. Si el navegador no puede, corre
+// en la pagina con un ritmo que se adapta a lo que tarde cada cuadro.
+function detectorEnWorker() {
+  return new Promise((resolve) => {
+    let w;
+    try { w = new Worker("/static/detector.js"); } catch { resolve(null); return; }
+    const pendientes = new Map();
+    let n = 0;
+    const fallar = () => { clearTimeout(tope); w.terminate(); resolve(null); };
+    const tope = setTimeout(fallar, 30000);
+    w.onerror = fallar;
+    w.onmessage = (e) => {
+      const m = e.data;
+      if (m.tipo === "listo") {
+        if (!m.ok) { fallar(); return; }
+        clearTimeout(tope);
+        resolve({ analizar: enviar, enPagina: false });
+      } else if (m.tipo === "res") {
+        pendientes.get(m.id)?.(m.f === undefined ? null : { f: m.f, hands: m.hands });
+        pendientes.delete(m.id);
+      }
+    };
+    async function enviar(video, t, conManos) {
+      let bitmap;
+      try { bitmap = await createImageBitmap(video); } catch { return null; }
+      const id = ++n;
+      const res = new Promise((r) => pendientes.set(id, r));
+      w.postMessage({ tipo: "cuadro", id, bitmap, t, manos: conManos }, [bitmap]);
+      // Si el Worker no contesta, no se queda esperando para siempre.
+      return Promise.race([res, esperarMs(3000).then(() => { pendientes.delete(id); return null; })]);
+    }
+    w.postMessage({ tipo: "init" });
+  });
+}
+
+async function detectorEnPagina() {
+  const tareas = await cargar();
+  return { analizar: async (video, t, conManos) => analizar(tareas, video, t, conManos), enPagina: true };
 }
 
 async function loadDetector() {
   try {
-    const v = await import(`${MP}/vision_bundle.mjs`);
-    const fileset = await v.FilesetResolver.forVisionTasks(`${MP}/wasm`);
-    faceLm = await createTask(v.FaceLandmarker, fileset,
-      `${MODELS}/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
-      { numFaces: 1, outputFaceBlendshapes: true });
-    handLm = await createTask(v.HandLandmarker, fileset,
-      `${MODELS}/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, { numHands: 2 });
-  } catch (e) {
+    det = (window.Worker && window.createImageBitmap ? await detectorEnWorker() : null) || await detectorEnPagina();
+  } catch {
     // Sin detector se guia por tiempo; el servidor valida igual.
-    faceLm = handLm = null;
+    det = null;
   }
-}
-
-// Mismos puntos que app/services/face_track.py. Los cuadros llegan sin espejo
-// (el espejo es solo CSS): la izquierda del usuario queda a la derecha de la imagen.
-function faceInfo(res) {
-  if (!res.faceLandmarks?.length) return null;
-  const p = res.faceLandmarks[0];
-  const a = p[234].x, b = p[454].x, w = Math.abs(b - a);
-  const bs = {};
-  (res.faceBlendshapes?.[0]?.categories || []).forEach((c) => { bs[c.categoryName] = c.score; });
-  return {
-    turn: w > 1e-3 ? (p[1].x - (a + b) / 2) / w : null,
-    blink: ((bs.eyeBlinkLeft ?? 0) + (bs.eyeBlinkRight ?? 0)) / 2,
-    noseX: p[1].x, chinY: p[152].y,
-  };
 }
 
 // ---------------------------------------------------------------- arranque
@@ -298,11 +309,13 @@ async function grabar(reto) {
 
   const mime = pickMime();
   const chunks = [];
-  const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida.
+  const recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
   recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
 
   // fase: encuadre -> cuenta -> gesto -> frase -> fin
   let fase = "encuadre", paso = 0, desde = performance.now(), inicioRec = 0, ultimo = 0;
+  let ocupado = false, intervalo = 66;  // ~15 cuadros por segundo como maximo
   let run = 0, faceRun = 0, seenOpen = false, closed = false, lastFace = null, fraseTimer = null;
 
   const marcar = () => items.forEach((li, i) => {
@@ -379,7 +392,7 @@ async function grabar(reto) {
 
   // Solo deja empezar con el rostro a la vista (sin detector, de inmediato).
   function encuadre(veRostro) {
-    const ok = !faceLm || veRostro;
+    const ok = !det || veRostro;
     btnGrabar.disabled = !ok;
     $("instruccion").textContent = ok ? "Todo listo para empezar" : "Coloca tu rostro frente a la cámara";
   }
@@ -399,8 +412,8 @@ async function grabar(reto) {
     // Alzar mano: palma arriba de la barbilla, del lado pedido de la nariz.
     if (!lastFace) return false;
     const izquierda = gesto === "raise_left_hand";
-    const ok = (hands || []).some((h) =>
-      (izquierda ? h[9].x > lastFace.noseX : h[9].x < lastFace.noseX) && h[9].y < lastFace.chinY);
+    const ok = (hands || []).some((p) =>
+      (izquierda ? p.x > lastFace.noseX : p.x < lastFace.noseX) && p.y < lastFace.chinY);
     run = ok ? run + 1 : 0;
     return run >= TH.handFrames;
   }
@@ -432,26 +445,41 @@ async function grabar(reto) {
       if (now - inicioRec > (MAX_DUR - 1) * 1000) { terminar(); return; }
     }
 
-    if (now - ultimo >= 66 && video.readyState >= 2) {  // ~15 cuadros por segundo
+    // Solo hace falta detectar al encuadrar y en los gestos (no en la cuenta ni en la frase).
+    // Un cuadro a la vez: si el equipo es lento, se analizan menos por segundo.
+    const detectar = fase === "encuadre" || fase === "gesto";
+    if (detectar && !ocupado && now - ultimo >= intervalo && video.readyState >= 2) {
       ultimo = now;
       const gesto = fase === "gesto" ? gestos[paso].gesture : null;
-      let f = null, hands = null;
-      if (faceLm) {
-        f = faceInfo(faceLm.detectForVideo(video, now));
-        if (f) lastFace = f;
-        if (gesto?.startsWith("raise_") && handLm) hands = handLm.detectForVideo(video, now).landmarks;
-      }
-
-      if (fase === "encuadre") {
-        faceRun = f ? faceRun + 1 : 0;
-        encuadre(faceRun >= TH.faceFrames);
-      } else if (fase === "gesto") {
-        const listo = faceLm ? cumplido(gesto, f, hands) : now - desde > 3500;
-        if (listo) siguientePaso();
-        else if (now - desde > 7000) $("pista").textContent = HINTS[gesto];
+      if (!det) {
+        procesar(null, null, now);
+      } else {
+        ocupado = true;
+        const enviado = { fase, paso, t0: performance.now() };
+        det.analizar(video, now, !!gesto?.startsWith("raise_")).then((r) => {
+          ocupado = false;
+          const dur = performance.now() - enviado.t0;
+          // En la pagina se deja al menos el doble de respiro para que el video se pinte.
+          intervalo = Math.min(300, Math.max(66, det.enPagina ? dur * 3 : dur));
+          // Un resultado que llega tarde, de otro paso, se descarta.
+          if (r && fase === enviado.fase && paso === enviado.paso) procesar(r.f, r.hands, performance.now());
+        });
       }
     }
     requestAnimationFrame(tick);
+  }
+
+  function procesar(f, hands, now) {
+    if (f) lastFace = f;
+    if (fase === "encuadre") {
+      faceRun = f ? faceRun + 1 : 0;
+      encuadre(faceRun >= TH.faceFrames);
+    } else if (fase === "gesto") {
+      const gesto = gestos[paso].gesture;
+      const listo = det ? cumplido(gesto, f, hands) : now - desde > 3500;
+      if (listo) siguientePaso();
+      else if (now - desde > 7000) $("pista").textContent = HINTS[gesto];
+    }
   }
   requestAnimationFrame(tick);
 }
