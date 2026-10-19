@@ -120,6 +120,8 @@ def compare_id_against_segments(
             "similarity_percent": percent,
             "is_match": percent >= threshold_percent,
             "live_score": seg["live_score"],
+            # Si la cara elegida de este tramo miraba de frente (en los gestos puede que no).
+            "frontal": seg.get("frontal"),
         })
 
     found = [r["raw_similarity"] for r in results if r["face_found"]]

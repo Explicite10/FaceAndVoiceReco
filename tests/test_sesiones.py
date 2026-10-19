@@ -268,12 +268,23 @@ async def test_sin_evidencia_por_defecto(entorno):
 
 
 def test_pose_de_frente():
+    from app.services.face_engine import MAX_GIRO_FRENTE, de_frente, pose
     # Fila YuNet: caja (4), ojo der., ojo izq., nariz, boca der., boca izq.
-    de_frente = np.array([0, 0, 100, 100, 30, 40, 70, 40, 50, 60, 35, 80, 65, 80, 0.9], dtype=np.float32)
-    girada = de_frente.copy()
+    frente = np.array([0, 0, 100, 100, 30, 40, 70, 40, 50, 60, 35, 80, 65, 80, 0.9], dtype=np.float32)
+    girada = frente.copy()
     girada[8] = 65  # nariz hacia un ojo
-    assert evidencia._giro(de_frente)[0] == 0
-    assert evidencia._giro(girada)[0] > evidencia._MAX_GIRO
+    assert pose(frente)[0] == 0 and de_frente(frente)
+    assert pose(girada)[0] > MAX_GIRO_FRENTE and not de_frente(girada)
+
+
+def test_cada_tramo_compara_la_cara_de_frente():
+    from app.services.video_face import elegir_cara
+    def c(calidad, frontal, giro):
+        return (1, calidad, 0.9, {"frontal": frontal, "giro": giro})
+    de_lado_nitida, frente_menos_nitida = c(900, False, 0.4), c(300, True, 0.05)
+    assert elegir_cara([de_lado_nitida, frente_menos_nitida]) is frente_menos_nitida
+    assert elegir_cara([c(100, True, 0.1), c(200, True, 0.02)])[1] == 200  # entre las de frente, la mas nitida
+    assert elegir_cara([c(900, False, 0.5), c(100, False, 0.2)])[3]["giro"] == 0.2  # ninguna de frente: la menos girada
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="Falta ffmpeg")

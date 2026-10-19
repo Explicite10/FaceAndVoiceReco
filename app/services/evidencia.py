@@ -13,16 +13,14 @@ import subprocess
 import cv2
 import numpy as np
 
-from app.services.face_engine import detect_faces, pick_best_face
+from app.services.face_engine import MAX_GIRO_FRENTE, detect_faces, pick_best_face, pose
 from app.services.image_quality import sharpness
 
 logger = logging.getLogger("uvicorn.error")
 
 FOTOGRAMAS = 3
 CALIDAD_JPEG = 90
-# Pose de frente: nariz centrada entre los ojos y ojos nivelados, como fraccion
-# de la distancia entre ojos (0 = de frente). 0.15 son unos 10-12 grados.
-_MAX_GIRO = 0.15
+# Para la foto se pide algo mas derecho que para comparar con la INE.
 _MAX_INCLINACION = 0.15
 _PASO = 3  # se revisa uno de cada 3 cuadros (~10 por segundo)
 _TIPOS_VIDEO = {".webm": "video/webm", ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
@@ -66,20 +64,6 @@ def a_mp4(origen: str, destino: str) -> bool:
     return True
 
 
-def _giro(row: np.ndarray) -> tuple[float, float]:
-    """(giro, inclinacion) con los 5 puntos de YuNet: ojo der., ojo izq., nariz, boca.
-
-    El giro se mide sobre la linea de los ojos y no sobre el eje x de la imagen:
-    con la cabeza ladeada, la nariz se corre en x aunque la cara este de frente.
-    """
-    ojo_d, ojo_i, nariz = row[4:6], row[6:8], row[8:10]
-    ojos = ojo_i - ojo_d
-    distancia = float(np.linalg.norm(ojos)) + 1e-6
-    centro = (ojo_d + ojo_i) / 2
-    giro = abs(float(np.dot(nariz - centro, ojos))) / distancia**2
-    return giro, abs(float(ojos[1])) / distancia
-
-
 def fotogramas_de_frente(path: str, cantidad: int = FOTOGRAMAS) -> list[dict]:
     """El mejor cuadro de frente de cada tramo del video, completo y en JPEG.
 
@@ -104,12 +88,12 @@ def fotogramas_de_frente(path: str, cantidad: int = FOTOGRAMAS) -> list[dict]:
             if len(caras) != 1:
                 continue
             cara = caras[0]
-            giro, inclinacion = _giro(cara.row)
+            giro, inclinacion = pose(cara.row)
             x1, y1, x2, y2 = (int(v) for v in cara.bbox)
             gris = cv2.cvtColor(cuadro[max(0, y1):max(0, y2), max(0, x1):max(0, x2)], cv2.COLOR_BGR2GRAY)
             if gris.size == 0:
                 continue
-            candidatos.append((indice, giro <= _MAX_GIRO and inclinacion <= _MAX_INCLINACION, giro,
+            candidatos.append((indice, giro <= MAX_GIRO_FRENTE and inclinacion <= _MAX_INCLINACION, giro,
                                sharpness(gris) * cara.score, round(cap.get(cv2.CAP_PROP_POS_MSEC) / 1000, 2),
                                _jpeg(cuadro), inclinacion))
     finally:
