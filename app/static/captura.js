@@ -274,16 +274,13 @@ async function grabar(reto) {
     $("instruccion").textContent = texto;
     $("pista").textContent = pista;
   };
-  mostrarPaso("rostro", "Coloca tu rostro dentro del óvalo", "Cuando estés listo, presiona Empezar grabación.");
+  mostrarPaso("rostro", "Coloca tu rostro frente a la cámara", "Cuando estés listo, presiona Empezar grabación.");
   $("pasoN").textContent = "Prepárate";
   $("fraseBox").hidden = true;
   $("btnListo").hidden = true;
   $("rec").hidden = true;
-  $("camAviso").hidden = false;
-  $("camAviso").textContent = "Coloca tu rostro dentro del óvalo";
   $("bien").hidden = true;
   $("cuentaAtras").hidden = true;
-  $("guia").className = "guide";
   $("sCamara").classList.remove("leyendo");
   const btnGrabar = $("btnGrabar");
   btnGrabar.hidden = false;
@@ -355,8 +352,6 @@ async function grabar(reto) {
     recorder.start();
     inicioRec = performance.now();
     $("rec").hidden = false;
-    $("camAviso").hidden = true;
-    $("guia").className = "guide grabando";
     fase = "gesto";
     paso = -1;
     siguientePaso();
@@ -367,7 +362,6 @@ async function grabar(reto) {
     if (fase !== "encuadre") return;
     fase = "cuenta";
     btnGrabar.hidden = true;
-    $("camAviso").hidden = true;
     const numero = $("cuentaAtras");
     let n = 3;
     const tic = () => {
@@ -387,9 +381,7 @@ async function grabar(reto) {
   function encuadre(veRostro) {
     const ok = !faceLm || veRostro;
     btnGrabar.disabled = !ok;
-    $("guia").classList.toggle("ok", !!faceLm && veRostro);
-    $("camAviso").textContent = ok ? "¡Bien! Ya puedes empezar" : "Coloca tu rostro dentro del óvalo";
-    $("instruccion").textContent = ok ? "Todo listo para empezar" : "Coloca tu rostro dentro del óvalo";
+    $("instruccion").textContent = ok ? "Todo listo para empezar" : "Coloca tu rostro frente a la cámara";
   }
 
   function cumplido(gesto, f, hands) {

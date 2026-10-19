@@ -188,18 +188,6 @@ h2 { font-size: 21px; font-weight: 700; }
   transform: scaleX(-1); /* espejo solo en pantalla; el video se graba sin espejo */
 }
 
-/* Guia de encuadre: ovalo con el exterior oscurecido. Al grabar solo queda el contorno,
-   para no tapar las manos. */
-.guide { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-.guide span {
-  height: 76%; aspect-ratio: 3 / 4; max-width: 82%;
-  border-radius: 50%; border: 2px solid rgba(255, 255, 255, .85);
-  box-shadow: 0 0 0 9999px rgba(8, 10, 14, .45);
-  transition: border-color .25s, box-shadow .35s;
-}
-.guide.ok span { border-color: var(--accent-2-real); border-width: 3px; }
-.guide.grabando span { box-shadow: 0 0 0 9999px rgba(8, 10, 14, 0); border-color: rgba(255, 255, 255, .35); border-width: 2px; }
-
 .rec {
   position: absolute; top: 12px; left: 12px; display: flex; align-items: center; gap: 7px;
   padding: 4px 10px; border-radius: 6px; background: rgba(10, 12, 16, .7); color: #fff;
@@ -207,12 +195,6 @@ h2 { font-size: 21px; font-weight: 700; }
 }
 .rec .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff4d4d; animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: .25; } }
-
-.cam-hint {
-  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
-  max-width: calc(100% - 24px); padding: 6px 12px; border-radius: 6px;
-  background: rgba(10, 12, 16, .72); color: #fff; font-size: 13px; font-weight: 500; text-align: center;
-}
 
 .countdown-big {
   position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
