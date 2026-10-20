@@ -31,7 +31,7 @@ svg { flex: none; }
 @media (max-width: 560px) {
   .topbar .container { gap: 8px; }
   .topbar .btn { padding: 8px 10px; font-size: 13px; }
-  .brand span, .topbar .solo-desktop { display: none; }
+  .brand span { display: none; }
 }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0; }
@@ -122,10 +122,3 @@ td { padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: now
 .pill.bad { background: var(--danger-bg); color: var(--danger); }
 .pill.none { background: var(--surface-2); color: var(--muted); }
 .empty-row { color: var(--muted); text-align: center; padding: 18px; }
-
-/* Modo presentacion: solo el QR y las instrucciones, en grande. */
-body.presentacion .solo-admin { display: none !important; }
-body.presentacion .grid { min-height: calc(100vh - 60px); align-items: center; }
-body.presentacion .qr-box svg { width: min(460px, 80vw, 62vh); }
-body.presentacion .howto b { font-size: 18px; }
-body.presentacion .howto span { font-size: 15px; }

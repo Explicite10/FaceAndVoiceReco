@@ -17,7 +17,6 @@
       <div class="container">
         <a class="brand" href="/panel"><img src="/static/logo.png" alt="" /><span>Prueba de vida</span></a>
         <div class="spacer"></div>
-        <button class="btn btn-ghost solo-desktop" id="btnPresentar" type="button">Modo presentación</button>
         <form class="solo-admin" method="post" action="/logout" style="margin:0">
           <button class="btn btn-ghost" type="submit">Cerrar sesión</button>
         </form>
@@ -123,13 +122,6 @@
         try { await navigator.clipboard.writeText($("qrUrl").value); } catch { $("qrUrl").select(); document.execCommand("copy"); }
         $("btnCopiar").textContent = "Copiado";
         setTimeout(() => { $("btnCopiar").textContent = "Copiar"; }, 1500);
-      };
-
-      $("btnPresentar").onclick = () => {
-        const on = document.body.classList.toggle("presentacion");
-        $("btnPresentar").textContent = on ? "Salir de presentación" : "Modo presentación";
-        if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
-        if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
       };
     </script>
   </body>
