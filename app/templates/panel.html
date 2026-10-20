@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Prueba de vida</title>
+    <meta name="theme-color" content="#072146" />
+    <link rel="icon" type="image/png" href="/static/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/demo.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container">
+        <a class="brand" href="/panel"><img src="/static/logo.png" alt="" /><span>Prueba de vida</span></a>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost solo-desktop" id="btnPresentar" type="button">Modo presentación</button>
+        <form class="solo-admin" method="post" action="/logout" style="margin:0">
+          <button class="btn btn-ghost" type="submit">Cerrar sesión</button>
+        </form>
+      </div>
+    </header>
+
+    <section class="panel-hero solo-admin">
+      <div class="container">
+        <p class="eyebrow">Demostración</p>
+        <h1>Comparte el código para que hagan la prueba de vida</h1>
+        <p>Solo quien escanee este código puede entrar a la prueba. Si generas un código nuevo, el anterior
+          y los accesos abiertos con él dejan de funcionar.</p>
+      </div>
+    </section>
+
+    <main class="container">
+      <div class="grid">
+        <section class="card qr-card">
+          <div class="qr-box" aria-label="Código QR para entrar a la prueba de vida">{{ qr_svg | safe }}</div>
+          <div class="qr-url solo-admin">
+            <input class="input" id="qrUrl" value="{{ qr_url }}" readonly aria-label="Enlace del código" />
+            <button class="btn" id="btnCopiar" type="button">Copiar</button>
+          </div>
+          <div class="qr-actions solo-admin">
+            <a class="btn btn-primary" href="/prueba" target="_blank" rel="noopener">Abrir la prueba</a>
+            <form method="post" action="/panel/nuevo-qr" style="margin:0"
+                  onsubmit="return confirm('El código actual y los accesos abiertos con él dejarán de funcionar. ¿Generar uno nuevo?')">
+              <button class="btn" type="submit">Generar código nuevo</button>
+            </form>
+          </div>
+          <p class="qr-note">Escanéalo con la cámara de tu celular.</p>
+        </section>
+
+        <section class="card steps-card">
+          <h2>¿Cómo hacer la prueba?</h2>
+          <ol class="howto">
+            <li><div><b>Escanea el código QR</b><span>Con la cámara de tu celular; se abre la prueba en el navegador.</span></div></li>
+            <li><div><b>Sube la foto de tu INE</b><span>Del frente y bien iluminada. Puedes tomarla en ese momento.</span></div></li>
+            <li><div><b>Permite cámara y micrófono</b><span>Coloca tu rostro dentro del óvalo y presiona Empezar grabación.</span></div></li>
+            <li><div><b>Sigue las indicaciones</b><span>Tres movimientos sencillos y una frase que lees en voz alta.</span></div></li>
+            <li><div><b>Verifica</b><span>En unos segundos verás si tu identidad fue confirmada.</span></div></li>
+          </ol>
+          <ul class="tips">
+            <li>Buena iluminación</li>
+            <li>Rostro descubierto</li>
+            <li>Lugar sin ruido</li>
+            <li>No se guardan fotos ni videos</li>
+          </ul>
+        </section>
+
+        <section class="card stats-card solo-admin">
+          <div class="stats-head">
+            <h2>Participación</h2>
+            <small>{% if persistente %}Se actualiza cada 10 segundos.{% else %}Sin base de datos: los conteos se pierden al reiniciar.{% endif %}</small>
+          </div>
+          <div class="tiles">
+            <div class="tile"><small>Escaneos del código</small><strong id="nSesiones">{{ resumen.sesiones }}</strong></div>
+            <div class="tile"><small>Personas que hicieron la prueba</small><strong id="nPersonas">{{ resumen.personas }}</strong></div>
+            <div class="tile ok"><small>Aprobadas</small><strong id="nAprobadas">{{ resumen.aprobadas }}</strong></div>
+            <div class="tile bad"><small>No aprobadas</small><strong id="nRechazadas">{{ resumen.rechazadas }}</strong></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Escaneo</th><th>Pruebas</th><th>Tipo</th><th>Último resultado</th></tr></thead>
+              <tbody id="recientes"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script id="datosIniciales" type="application/json">{{ resumen | tojson }}</script>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const hora = (iso) => new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+      const TIPO = { video: "Video", foto: "Foto" };
+
+      function pintar(r) {
+        $("nSesiones").textContent = r.sesiones;
+        $("nPersonas").textContent = r.personas;
+        $("nAprobadas").textContent = r.aprobadas;
+        $("nRechazadas").textContent = r.rechazadas;
+        const filas = r.recientes.map((s) => {
+          const res = s.ultimo_aprobado === true ? '<span class="pill ok">Aprobada</span>'
+            : s.ultimo_aprobado === false ? '<span class="pill bad">No aprobada</span>'
+            : '<span class="pill none">Sin prueba</span>';
+          return `<tr><td>${hora(s.creada)}</td><td>${s.pruebas}</td><td>${TIPO[s.ultimo_tipo] || "—"}</td><td>${res}</td></tr>`;
+        });
+        $("recientes").innerHTML = filas.join("") || '<tr><td class="empty-row" colspan="4">Aún nadie ha escaneado el código.</td></tr>';
+      }
+      pintar(JSON.parse($("datosIniciales").textContent));
+
+      async function actualizar() {
+        try {
+          const res = await fetch("/panel/datos", { cache: "no-store" });
+          if (res.status === 401) { location.href = "/login"; return; }
+          if (res.ok) pintar(await res.json());
+        } catch { /* sin red: se reintenta en el siguiente ciclo */ }
+      }
+      setInterval(actualizar, 10000);
+
+      $("btnCopiar").onclick = async () => {
+        try { await navigator.clipboard.writeText($("qrUrl").value); } catch { $("qrUrl").select(); document.execCommand("copy"); }
+        $("btnCopiar").textContent = "Copiado";
+        setTimeout(() => { $("btnCopiar").textContent = "Copiar"; }, 1500);
+      };
+
+      $("btnPresentar").onclick = () => {
+        const on = document.body.classList.toggle("presentacion");
+        $("btnPresentar").textContent = on ? "Salir de presentación" : "Modo presentación";
+        if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+        if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      };
+    </script>
+  </body>
+</html>

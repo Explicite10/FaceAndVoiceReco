@@ -408,7 +408,7 @@
               <label class="dropzone">
                 <input type="file" id="idFile" accept="image/*" />
                 <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h4M14 14h4"/></svg></span>
-                <span><b>Arrastra la imagen o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 10 MB</small></span>
+                <span><b>Arrastra la imagen o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 8 MB</small></span>
               </label>
               <div id="idPrevBox"></div>
             </article>
@@ -519,7 +519,7 @@
               <label class="dropzone">
                 <input type="file" id="pIdFile" accept="image/*" />
                 <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h4M14 14h4"/></svg></span>
-                <span><b>Arrastra la imagen o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 10 MB</small></span>
+                <span><b>Arrastra la imagen o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 8 MB</small></span>
               </label>
               <div id="pIdPrevBox"></div>
             </article>
@@ -535,7 +535,7 @@
               <label class="dropzone">
                 <input type="file" id="pPhotoFile" accept="image/*" />
                 <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></span>
-                <span><b>Arrastra la foto o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 10 MB</small></span>
+                <span><b>Arrastra la foto o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 8 MB</small></span>
               </label>
 
               <div class="divider">o tómala con la cámara</div>
@@ -590,7 +590,7 @@
     <footer>
       <div class="container">
         <span>Demostración de verificación de identidad con prueba de vida.</span>
-        <span>Las imágenes se usan solo para esta verificación.</span>
+        <span>Las imágenes y el video se usan solo para esta verificación y no se guardan.</span>
       </div>
     </footer>
 
@@ -697,6 +697,8 @@
 
       // Error de la solicitud, sin detalles tecnicos.
       function errorAmigable(status) {
+        if (status === 401 || status === 403) return ["Tu acceso venció", "Vuelve a escanear el código QR para continuar."];
+        if (status === 503) return ["Hay muchas verificaciones en curso", "Espera unos segundos e intenta de nuevo."];
         if (status === 400) return ["El reto ya no es válido", "Graba la prueba de vida de nuevo para intentar otra vez."];
         if (status === 413) return ["Archivo demasiado grande", "Usa una imagen o un video más ligero."];
         if (status === 415 || status === 422) return ["No pudimos leer el archivo", "Verifica que la imagen sea clara y esté en JPG, PNG o WEBP."];
@@ -1015,9 +1017,13 @@
           }
           try {
             challenge = await pedirReto();
-          } catch {
+          } catch (e) {
             listo();
-            $("aviso").textContent = "No pudimos iniciar la prueba. Intenta de nuevo en un momento.";
+            $("aviso").textContent = e.message === "401"
+              ? "Tu acceso venció. Vuelve a escanear el código QR para continuar."
+              : e.message === "429"
+                ? "Hiciste muchos intentos seguidos. Espera un momento antes de volver a intentar."
+                : "No pudimos iniciar la prueba. Intenta de nuevo en un momento.";
             return;
           }
           videoBlob = null; tiempos = {};

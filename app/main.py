@@ -1,20 +1,21 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
+from app import db
 from app.api.routes.identity import router as identity_router
+from app.core import acceso
 from app.core.config import settings
+from app.core.web_security import BodyLimit, SecurityHeaders
 from app.services.antispoof import load_antispoof_models
 from app.services.asr_engine import load_model
 from app.services.face_engine import load_face_models
 from app.services.face_track import load_track_models
+from app.web import router as web_router
 
-templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -25,15 +26,17 @@ async def lifespan(app: FastAPI):
     load_face_models()
     load_antispoof_models()
     load_track_models()
-    if settings.api_keys:
-        logger.info("Acceso: API keys de %s", ", ".join(sorted(settings.api_keys)))
-    else:
-        logger.warning("Acceso: API_KEYS vacio, la API no pide autenticacion (solo para desarrollo).")
+    await db.connect()
+    acceso.set_qr_vigente(await db.qr_token())
+    if not settings.admin_email or not settings.admin_password_hash:
+        logger.warning("ADMIN_EMAIL / ADMIN_PASSWORD_HASH vacios: nadie puede entrar al panel.")
     yield
+    await db.close()
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
-# Detector de gestos del navegador (Web Worker): asi no traba la vista de la camara.
+# Sin /docs ni /openapi.json: en la demo no se publica el contrato de la API.
+app = FastAPI(title=settings.app_name, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+# Detector de gestos del navegador (Web Worker), logo e iconos.
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 if settings.cors_origins:
@@ -45,6 +48,8 @@ if settings.cors_origins:
         # Para que un frontend pueda leer cuanto esperar tras un 429.
         expose_headers=["Retry-After"],
     )
+app.add_middleware(BodyLimit)
+app.add_middleware(SecurityHeaders)
 
 
 @app.get("/health", include_in_schema=False)
@@ -53,19 +58,5 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def home(request: Request):
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "min_duration_sec": settings.audio_min_duration_sec,
-            "max_duration_sec": settings.audio_max_duration_sec,
-            "turn_offset": settings.gesture_turn_offset,
-            "blink_closed": settings.gesture_blink_closed,
-            "blink_open": settings.gesture_blink_open,
-        },
-    )
-
-
+app.include_router(web_router)
 app.include_router(identity_router, prefix="/api")

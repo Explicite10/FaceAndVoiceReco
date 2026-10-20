@@ -1,0 +1,131 @@
+/* Estilos compartidos de login, panel y acceso (la prueba trae los suyos en index.html). */
+:root {
+  --navy: #072146; --blue: #004481; --blue-mid: #1973b8; --blue-light: #5bbeff; --aqua: #2dcccd;
+  --tint: #e9f4fc; --tint-2: #d4edfc;
+  --bg: #f4f4f4; --surface: #ffffff; --surface-2: #f7f8fa; --border: #e1e5ea;
+  --text: #121212; --muted: #5d6b79; --faint: #9aa6b2;
+  --success: #388d4f; --success-bg: #e7f5eb; --success-solid: #48ae64;
+  --danger: #b92a45; --danger-bg: #fbe9ec; --danger-solid: #da3851;
+  --shadow: 0 1px 2px rgba(7,33,70,.06), 0 10px 28px -14px rgba(7,33,70,.22);
+  --radius: 14px;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.55 "Libre Franklin", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+[hidden] { display: none !important; }
+svg { flex: none; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .container { padding: 0 28px; } }
+
+.topbar { background: var(--navy); color: #fff; }
+.topbar .container { display: flex; align-items: center; gap: 12px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; min-width: 0; color: #fff; text-decoration: none; }
+.brand img { height: 33px; width: auto; display: block; }
+.brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar .spacer { flex: 1; }
+@media (max-width: 560px) {
+  .topbar .container { gap: 8px; }
+  .topbar .btn { padding: 8px 10px; font-size: 13px; }
+  .brand span, .topbar .solo-desktop { display: none; }
+}
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0; }
+
+.btn {
+  appearance: none; font: inherit; font-weight: 600; font-size: 14.5px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 18px; border-radius: 8px; border: 1px solid var(--blue-mid);
+  background: var(--surface); color: var(--blue-mid); transition: background .15s, border-color .15s;
+}
+.btn:hover:not(:disabled) { background: var(--tint); }
+.btn:focus-visible { outline: 3px solid rgba(25,115,184,.35); outline-offset: 2px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--blue-mid); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--blue); border-color: var(--blue); }
+.btn-ghost { border-color: rgba(255,255,255,.35); background: transparent; color: #fff; }
+.btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,.1); }
+.btn-block { width: 100%; padding: 13px 18px; font-size: 15px; }
+
+.field { display: grid; gap: 6px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--navy); }
+.input {
+  width: 100%; font: inherit; font-size: 15px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 11px 12px; outline: none;
+}
+.input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(25,115,184,.18); }
+
+.alert { padding: 10px 12px; border-radius: 8px; font-size: 14px; background: var(--danger-bg); color: var(--danger); border: 1px solid #f2c4cd; }
+
+/* ---------- Login y acceso ---------- */
+.center-page { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+  background: linear-gradient(135deg, var(--navy) 0%, var(--blue) 100%); }
+.auth-card { width: min(400px, 100%); padding: 28px 24px; }
+@media (min-width: 480px) { .auth-card { padding: 34px 32px; } }
+.auth-logo { height: 54px; width: auto; display: block; margin: 0 auto 14px; }
+.auth-card h1 { margin: 0; text-align: center; font-size: 22px; color: var(--navy); }
+.auth-card .sub { margin: 4px 0 22px; text-align: center; color: var(--muted); font-size: 14px; }
+.auth-card form { display: grid; gap: 14px; }
+.auth-card .fine { margin: 18px 0 0; text-align: center; color: var(--faint); font-size: 12.5px; }
+
+/* ---------- Panel ---------- */
+.panel-hero { background: linear-gradient(135deg, var(--navy) 0%, var(--blue) 100%); color: #fff; }
+.panel-hero .container { padding-top: 26px; padding-bottom: 26px; }
+.eyebrow { margin: 0 0 6px; color: var(--blue-light); font-weight: 700; font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; }
+.panel-hero h1 { margin: 0 0 6px; font-size: clamp(22px, 3.4vw, 32px); line-height: 1.2; }
+.panel-hero p { margin: 0; color: #d3e3f3; max-width: 720px; }
+
+.grid { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); padding: 20px 0 40px; }
+@media (min-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; } }
+
+.qr-card { padding: 22px; text-align: center; }
+.qr-box { display: inline-block; padding: 10px; border-radius: 12px; background: #fff; border: 1px solid var(--border); }
+.qr-box svg { display: block; width: min(320px, 70vw); height: auto; }
+.qr-url { margin: 14px auto 0; max-width: 420px; display: flex; gap: 8px; }
+.qr-url input { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); }
+.qr-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 16px; }
+.qr-note { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+
+.steps-card { padding: 22px; }
+.steps-card h2 { margin: 0 0 14px; font-size: 18px; color: var(--navy); }
+.howto { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: s; }
+.howto li { display: flex; gap: 14px; align-items: flex-start; counter-increment: s; }
+.howto li::before {
+  content: counter(s); width: 34px; height: 34px; border-radius: 999px; flex: none; display: grid; place-items: center;
+  background: var(--tint); color: var(--blue); font-weight: 700;
+}
+.howto b { display: block; color: var(--navy); }
+.howto span { color: var(--muted); font-size: 14px; }
+.tips { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; padding: 0; list-style: none; }
+.tips li { font-size: 13px; padding: 6px 11px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); }
+
+.stats-card { padding: 22px; grid-column: 1 / -1; }
+.stats-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.stats-head h2 { margin: 0; font-size: 18px; color: var(--navy); }
+.stats-head small { color: var(--muted); }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 720px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.tile { padding: 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
+.tile small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.tile strong { display: block; font-size: 28px; color: var(--navy); font-variant-numeric: tabular-nums; }
+.tile.ok strong { color: var(--success); } .tile.bad strong { color: var(--danger); }
+.table-wrap { overflow-x: auto; margin-top: 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12.5px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.pill.ok { background: var(--success-bg); color: var(--success); }
+.pill.bad { background: var(--danger-bg); color: var(--danger); }
+.pill.none { background: var(--surface-2); color: var(--muted); }
+.empty-row { color: var(--muted); text-align: center; padding: 18px; }
+
+/* Modo presentacion: solo el QR y las instrucciones, en grande. */
+body.presentacion .solo-admin { display: none !important; }
+body.presentacion .grid { min-height: calc(100vh - 60px); align-items: center; }
+body.presentacion .qr-box svg { width: min(460px, 80vw, 62vh); }
+body.presentacion .howto b { font-size: 18px; }
+body.presentacion .howto span { font-size: 15px; }

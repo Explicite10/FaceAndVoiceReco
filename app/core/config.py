@@ -131,7 +131,7 @@ class Settings(BaseModel):
     session_minutes: int = int(os.getenv("SESSION_MINUTES", "30"))
     session_max_attempts: int = int(os.getenv("SESSION_MAX_ATTEMPTS", "3"))
     # Analisis de video simultaneos: cada uno ocupa varios nucleos por un rato.
-    max_concurrent_verifications: int = int(os.getenv("MAX_CONCURRENT_VERIFICATIONS", "1"))
+    max_concurrent_verifications: int = int(os.getenv("MAX_CONCURRENT_VERIFICATIONS", "2"))
     # Vigencia de las ligas de evidencia (video, fotogramas, cara de la INE) que
     # trae el webhook cuando la sesion las pide. Minimo 30 minutos.
     evidence_minutes: int = max(30, int(os.getenv("EVIDENCE_MINUTES", "60")))
@@ -152,16 +152,35 @@ class Settings(BaseModel):
     cors_origins: list[str] = _parse_list(os.getenv("CORS_ORIGINS", ""))
 
     # ---------- Limites de uso ----------
-    # Por proyecto (API key); sin llaves configuradas, por IP del cliente. Detras
-    # de un proxy, la IP sale de X-Forwarded-For (ver FORWARDED_ALLOW_IPS).
+    # Por sesion del QR (o proyecto, si es API key); si no, por IP del cliente.
+    # Detras de un proxy, la IP sale de X-Forwarded-For (ver FORWARDED_ALLOW_IPS).
     # Se cuenta en memoria: vale con un solo worker de uvicorn.
     rate_limit_requests: int = int(os.getenv("RATE_LIMIT_REQUESTS", "10"))  # 0 = sin limite
     rate_limit_window_sec: int = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60"))
 
-    # Subidas. Ojo: FastAPI recibe el request completo antes de estas
-    # validaciones; si hay un proxy al frente, conviene que limite el body.
-    max_video_mb: int = int(os.getenv("MAX_VIDEO_MB", "50"))   # 20 s a 1080p pesan ~45 MB
-    max_image_mb: int = int(os.getenv("MAX_IMAGE_MB", "10"))
-    max_image_megapixels: int = 50   # se revisa en el encabezado, antes de decodificar
+    # Subidas. El tamaño total del request ademas se corta antes de que FastAPI
+    # lo reciba completo (app.core.web_security.BodyLimit).
+    max_video_mb: int = int(os.getenv("MAX_VIDEO_MB", "25"))   # 60 s a 640x480 y 1.2 Mbps pesan ~9 MB
+    max_image_mb: int = int(os.getenv("MAX_IMAGE_MB", "8"))
+    max_image_megapixels: int = int(os.getenv("MAX_IMAGE_MEGAPIXELS", "25"))  # se revisa antes de decodificar
+
+    # ---------- Demo con QR: panel con login y acceso por codigo ----------
+    # Firma de las cookies. Sin SECRET_KEY se genera una al arrancar y las
+    # sesiones abiertas se pierden con cada reinicio.
+    secret_key: str = os.getenv("SECRET_KEY", "")
+    # Unica cuenta del panel. La contraseña solo se guarda como hash
+    # (python -m app.core.acceso hash).
+    admin_email: str = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+    admin_password_hash: str = os.getenv("ADMIN_PASSWORD_HASH", "")
+    admin_session_hours: int = int(os.getenv("ADMIN_SESSION_HOURS", "8"))
+    # Cuanto dura el acceso de quien escaneo el QR.
+    participant_session_minutes: int = int(os.getenv("PARTICIPANT_SESSION_MINUTES", "60"))
+    # Intentos de login por IP en la ventana, y en total (frena fuerza bruta repartida).
+    login_attempts_per_ip: int = 5
+    login_attempts_global: int = 30
+    login_window_sec: int = 300
+    # Escaneos del QR (sesiones nuevas) por IP en la ventana.
+    qr_scans_per_ip: int = 30
+    qr_scan_window_sec: int = 600
 
 settings = Settings()

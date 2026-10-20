@@ -1,9 +1,13 @@
 # Levantar o actualizar en el servidor:
 #   docker compose up -d --build
 #
-# restart: always hace que el contenedor arranque solo al prender el servidor,
-# siempre que el servicio de Docker tambien arranque con el sistema:
+# restart: always hace que los contenedores arranquen solos al prender el
+# servidor, siempre que el servicio de Docker tambien arranque con el sistema:
 #   sudo systemctl enable docker
+#
+# Postgres solo guarda el token del QR y el resumen de cada sesion (sin videos,
+# fotos ni datos personales). No publica puerto: solo la API lo ve, dentro de
+# la red de este compose.
 
 services:
   api:
@@ -12,5 +16,29 @@ services:
     container_name: face-voice-reco
     restart: always
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pruebavida}:${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}@db:5432/${POSTGRES_DB:-pruebavida}
     ports:
       - "${API_PORT:-7860}:7860"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    container_name: face-voice-reco-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pruebavida}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-pruebavida}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

@@ -1,10 +1,12 @@
+import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
+from app import db
+from app.core.acceso import require_acceso
 from app.core.config import settings
 from app.core.rate_limit import challenge_limiter, verification_limiter
-from app.core.security import require_api_key
 from app.schemas.identity import ChallengeResponse, VerifyIdentityResponse, VerifyPhotoResponse
 from app.services.challenge import GESTURE_LABELS, create_challenge
 from app.services.identity_verification import verify_identity
@@ -12,11 +14,36 @@ from app.services.photo_verification import verify_photo
 
 router = APIRouter(tags=["Identity"])
 
+# Analisis simultaneos: cada uno ocupa varios nucleos un buen rato. Los demas
+# esperan su turno; si tardan demasiado, se les pide intentar despues.
+_turnos = asyncio.Semaphore(settings.max_concurrent_verifications)
+_ESPERA_MAX_SEC = 90
+
+
+async def _con_turno(coro):
+    try:
+        await asyncio.wait_for(_turnos.acquire(), timeout=_ESPERA_MAX_SEC)
+    except asyncio.TimeoutError:
+        coro.close()
+        raise HTTPException(status_code=503, detail="Hay muchas verificaciones en curso. Intenta en un momento.",
+                            headers={"Retry-After": "30"})
+    try:
+        return await coro
+    finally:
+        _turnos.release()
+
+
+async def _registrar(request: Request, tipo: str, reporte: dict) -> None:
+    """Suma la prueba a la sesion del QR (solo el resultado: nada de imagenes ni video)."""
+    sid = getattr(request.state, "sesion", None)
+    if sid:
+        await db.registrar_prueba(sid, tipo, bool(reporte["result"]["approved"]))
+
 
 @router.post(
     "/challenge",
     response_model=ChallengeResponse,
-    dependencies=[Depends(require_api_key), Depends(challenge_limiter)],
+    dependencies=[Depends(require_acceso), Depends(challenge_limiter)],
 )
 def create_challenge_endpoint(request: Request):
     """Reto de un solo uso para /api/verify-identity: gestos y frase aleatorios.
@@ -36,8 +63,8 @@ def create_challenge_endpoint(request: Request):
 @router.post(
     "/verify-identity",
     response_model=VerifyIdentityResponse,
-    # El orden importa: primero se identifica el proyecto, luego se cuenta.
-    dependencies=[Depends(require_api_key), Depends(verification_limiter)],
+    # El orden importa: primero se identifica la sesion (o proyecto), luego se cuenta.
+    dependencies=[Depends(require_acceso), Depends(verification_limiter)],
 )
 async def verify_identity_endpoint(
     request: Request,
@@ -70,7 +97,7 @@ async def verify_identity_endpoint(
     `match_threshold_percent` fija el % minimo de similitud en cada tramo (default 70).
     Un `challenge_id` vencido, usado o inexistente responde 400 sin analizar el video.
     """
-    return await verify_identity(
+    reporte = await _con_turno(verify_identity(
         id_image,
         video,
         expected_phrase,
@@ -78,15 +105,18 @@ async def verify_identity_endpoint(
         challenge_id=challenge_id,
         client=getattr(request.state, "client", None),
         ventana_frase=(frase_inicio, frase_fin) if frase_inicio is not None else None,
-    )
+    ))
+    await _registrar(request, "video", reporte)
+    return reporte
 
 
 @router.post(
     "/verify-photo",
     response_model=VerifyPhotoResponse,
-    dependencies=[Depends(require_api_key), Depends(verification_limiter)],
+    dependencies=[Depends(require_acceso), Depends(verification_limiter)],
 )
 async def verify_photo_endpoint(
+    request: Request,
     id_image: UploadFile = File(...),
     photo: UploadFile = File(...),
     match_threshold_percent: Optional[float] = Form(
@@ -101,4 +131,6 @@ async def verify_photo_endpoint(
     `result.approved` solo es true si ninguna validacion de `checks` fallo.
     `match_threshold_percent` fija el % minimo de similitud (default 70).
     """
-    return await verify_photo(id_image, photo, match_threshold_percent)
+    reporte = await _con_turno(verify_photo(id_image, photo, match_threshold_percent))
+    await _registrar(request, "foto", reporte)
+    return reporte
