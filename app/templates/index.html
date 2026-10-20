@@ -2,113 +2,742 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <title>Verificacion de identidad</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Verificación de identidad · Demo</title>
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      body { font-family: Arial, sans-serif; max-width: 1180px; margin: 40px auto;
-             background: #fff; color: #111; }
-      .row { display: flex; gap: 24px; align-items: flex-start; }
-      .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; flex: 1; min-width: 0; }
-      video, img.prev { max-width: 100%; border-radius: 12px; border: 1px solid #eee; }
-      video { background: #000; }
-      pre { white-space: pre-wrap; word-break: break-word; background: #fafafa;
-            padding: 12px; border-radius: 10px; border: 1px solid #eee; font-size: 12px; }
-      button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc;
-               cursor: pointer; background: #fff; }
-      button.primary { background: #1f4fd1; color: #fff; border-color: #1f4fd1; }
-      button:disabled { opacity: .45; cursor: not-allowed; }
-      h3 { margin: 18px 0 8px; } h3:first-child { margin-top: 0; }
-      .muted { color: #666; font-size: 12px; }
-      .phrase { font-size: 19px; line-height: 1.5; padding: 14px; border-radius: 10px;
-                background: #f4f7ff; border: 1px solid #ccd8f5; margin: 6px 0 4px; }
-      .timer { font-size: 26px; font-variant-numeric: tabular-nums; margin: 8px 0; }
-      .badge { display: inline-block; padding: 6px 12px; border-radius: 999px;
-               font-weight: bold; color: #fff; font-size: 14px; }
-      .b-approved { background: #1a7f37; } .b-rejected, .b-error { background: #b42318; }
-      .checks { list-style: none; padding: 0; margin: 8px 0; font-size: 13px; }
-      .checks li { padding: 4px 0; border-bottom: 1px solid #f0f0f0; display: flex; gap: 8px; }
-      .checks .ic { width: 16px; flex: none; font-weight: bold; text-align: center; }
-      .checks .passed .ic { color: #1a7f37; } .checks .failed .ic { color: #b42318; }
-      .checks .not_evaluated { color: #999; }
-      .checks code { font-size: 11px; color: #b42318; }
-      .big { font-size: 34px; font-weight: bold; margin: 6px 0; }
-      .overall { padding: 14px; border-radius: 12px; margin-bottom: 14px; border: 1px solid #ddd; }
-      .section { border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }
-      .ok { color: #1a7f37; font-weight: bold; } .bad { color: #b42318; font-weight: bold; }
-      table { border-collapse: collapse; width: 100%; font-size: 13px; }
-      td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
-      td:first-child { color: #666; width: 38%; }
-      .warn { color: #b42318; font-size: 13px; }
-      .rec { color: #b42318; font-weight: bold; }
-      .stage { position: relative; }
-      .stage video { display: block; width: 100%; }
+      :root {
+        --bg: #f5f6fb; --surface: #ffffff; --surface-2: #f1f3f9; --border: #e3e6ef;
+        --text: #0f172a; --muted: #64748b; --faint: #94a3b8;
+        --primary: #4f46e5; --primary-strong: #4338ca; --primary-soft: #eef0ff; --on-primary: #fff;
+        --success: #15803d; --success-soft: #e8f7ee; --danger: #c81e1e; --danger-soft: #fdecec;
+        --warning: #b45309; --warning-soft: #fff6e5;
+        --stage: #0b1020; --shadow: 0 1px 2px rgba(15,23,42,.05), 0 8px 24px -12px rgba(15,23,42,.12);
+        --radius: 16px; --radius-sm: 10px;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0a0e1a; --surface: #111827; --surface-2: #172033; --border: #243049;
+          --text: #e7eaf3; --muted: #9aa6bd; --faint: #6b7891;
+          --primary: #818cf8; --primary-strong: #a5b4fc; --primary-soft: #1e2246; --on-primary: #0a0e1a;
+          --success: #4ade80; --success-soft: #0f2a1b; --danger: #f87171; --danger-soft: #2f1416;
+          --warning: #fbbf24; --warning-soft: #2c2210;
+          --stage: #05070d; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -12px rgba(0,0,0,.6);
+          color-scheme: dark;
+        }
+      }
+
+      *, *::before, *::after { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font: 15px/1.55 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      [hidden] { display: none !important; }
+      code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .container { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
+      @media (min-width: 720px) { .container { padding: 0 28px; } }
+
+      /* ---------- Encabezado ---------- */
+      .topbar {
+        position: sticky; top: 0; z-index: 20; backdrop-filter: saturate(1.4) blur(10px);
+        background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom: 1px solid var(--border);
+      }
+      .topbar .container { display: flex; align-items: center; gap: 12px; height: 64px; }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; min-width: 0; }
+      .brand-mark {
+        width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none;
+        background: linear-gradient(135deg, var(--primary), #06b6d4); color: #fff;
+      }
+      .brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .tag {
+        font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+        padding: 3px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary);
+      }
+      .topbar .spacer { flex: 1; }
+      .link { color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14px; }
+      .link:hover { color: var(--text); }
+      @media (max-width: 560px) { .hide-sm { display: none !important; } }
+
+      .settings { position: relative; }
+      .settings > summary {
+        list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+        padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+        font-size: 14px; font-weight: 500; color: var(--text);
+      }
+      .settings > summary::-webkit-details-marker { display: none; }
+      .settings[open] > summary { border-color: var(--primary); }
+      .settings-panel {
+        position: absolute; right: 0; top: calc(100% + 8px); width: min(360px, calc(100vw - 32px));
+        background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 16px; box-shadow: var(--shadow);
+      }
+      .settings-panel p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+
+      /* ---------- Hero ---------- */
+      .hero { padding: 28px 0 8px; }
+      .hero h1 { font-size: clamp(24px, 3.4vw, 34px); line-height: 1.15; letter-spacing: -.025em; margin: 0 0 8px; }
+      .hero p { margin: 0; color: var(--muted); max-width: 720px; }
+      .features { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+      .feature {
+        display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;
+        padding: 6px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      }
+      .feature svg { color: var(--primary); }
+
+      /* ---------- Pestañas ---------- */
+      .tabs {
+        display: inline-flex; padding: 4px; gap: 4px; margin: 22px 0 18px; border-radius: 12px;
+        background: var(--surface-2); border: 1px solid var(--border); max-width: 100%;
+      }
+      .tab {
+        appearance: none; border: 0; background: transparent; color: var(--muted); cursor: pointer;
+        font: inherit; font-weight: 600; font-size: 14px; padding: 9px 16px; border-radius: 9px;
+        display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+      }
+      .tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+      @media (max-width: 480px) { .tabs { display: flex; } .tab { flex: 1; justify-content: center; padding: 9px 8px; } }
+
+      /* ---------- Layout ---------- */
+      .workspace { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); padding-bottom: 40px; }
+      @media (min-width: 1000px) {
+        .workspace { grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+      }
+      .result-col { scroll-margin-top: 80px; }
+      .stack { display: grid; gap: 16px; min-width: 0; }
+
+      .card {
+        background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+        box-shadow: var(--shadow); min-width: 0;
+      }
+      .step { padding: 18px; }
+      @media (min-width: 720px) { .step { padding: 22px; } }
+      .step-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+      .step-num {
+        width: 30px; height: 30px; border-radius: 999px; flex: none; display: grid; place-items: center;
+        font-weight: 700; font-size: 14px; background: var(--primary-soft); color: var(--primary);
+        transition: background .2s, color .2s;
+      }
+      .step.is-done .step-num { background: var(--success); color: #fff; }
+      .step.is-done .step-num span { display: none; }
+      .step:not(.is-done) .step-num svg { display: none; }
+      .step-head h2 { font-size: 16px; margin: 3px 0 2px; letter-spacing: -.01em; }
+      .step-head p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+      /* ---------- Formularios ---------- */
+      .field { display: grid; gap: 6px; }
+      .field label, .label { font-size: 13px; font-weight: 600; }
+      .input {
+        width: 100%; font: inherit; font-size: 14px; color: var(--text); background: var(--surface);
+        border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; outline: none;
+      }
+      .input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
+      .input-suffix { position: relative; max-width: 160px; }
+      .input-suffix .input { padding-right: 32px; }
+      .input-suffix::after { content: "%"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
+
+      .dropzone {
+        position: relative; display: flex; align-items: center; gap: 14px; cursor: pointer;
+        padding: 18px; border: 1.5px dashed var(--border); border-radius: 14px; background: var(--surface-2);
+        transition: border-color .15s, background .15s;
+      }
+      .dropzone:hover, .dropzone.is-drag { border-color: var(--primary); background: var(--primary-soft); }
+      .dropzone:focus-within { border-color: var(--primary); }
+      .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+      .dropzone .dz-icon {
+        width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none;
+        background: var(--surface); color: var(--primary); border: 1px solid var(--border);
+      }
+      .dropzone b { display: block; font-size: 14px; }
+      .dropzone small { color: var(--muted); font-size: 12.5px; }
+      .dropzone.compact { padding: 12px 14px; }
+      .dropzone.compact .dz-icon { width: 34px; height: 34px; border-radius: 10px; }
+
+      .preview {
+        display: flex; align-items: center; gap: 12px; margin: 12px 0 0; padding: 10px;
+        border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+      }
+      .preview img { width: 112px; height: 76px; object-fit: cover; border-radius: 8px; flex: none; background: var(--surface-2); }
+      .preview.tall img { width: 96px; height: 120px; }
+      .preview figcaption { min-width: 0; font-size: 13px; }
+      .preview figcaption b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .preview figcaption span { color: var(--muted); }
+
+      /* ---------- Botones ---------- */
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+      .btn {
+        appearance: none; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        padding: 11px 18px; border-radius: 11px; border: 1px solid var(--border);
+        background: var(--surface); color: var(--text); transition: transform .05s, background .15s, border-color .15s;
+      }
+      .btn:hover:not(:disabled) { border-color: var(--faint); }
+      .btn:active:not(:disabled) { transform: translateY(1px); }
+      .btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent); outline-offset: 2px; }
+      .btn:disabled { opacity: .45; cursor: not-allowed; }
+      .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+      .btn-primary:hover:not(:disabled) { background: var(--primary-strong); border-color: var(--primary-strong); }
+      .btn-rec { background: #e11d48; border-color: #e11d48; color: #fff; }
+      .btn-rec:hover:not(:disabled) { background: #be123c; border-color: #be123c; }
+      .btn-block { width: 100%; padding: 13px 18px; font-size: 15px; }
+      @media (max-width: 480px) { .actions .btn { flex: 1; } }
+
+      .hint { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+      .warn:empty { display: none; }
+      .warn {
+        margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; font-size: 13px;
+        background: var(--warning-soft); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
+      }
+      .divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 12px; color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+      .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+      .status-line { display: inline-flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+      .status-line::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--warning); flex: none; }
+      .status-line[data-state="ready"]::before { background: var(--success); }
+      .status-line[data-state="error"]::before { background: var(--danger); }
+      .status-line[data-state="loading"]::before { animation: pulse 1.2s infinite; }
+
+      /* ---------- Cámara ---------- */
+      .stage {
+        position: relative; aspect-ratio: 4 / 3; background: var(--stage); border-radius: 14px; overflow: hidden;
+        isolation: isolate;
+      }
+      .stage video { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--stage); }
+      .stage.is-live video { object-fit: cover; }
       /* Solo el preview en vivo va en espejo; los cuadros grabados no. */
       video.mirror { transform: scaleX(-1); }
-      .prompt { position: absolute; left: 0; right: 0; bottom: 12px; margin: 0 12px; padding: 10px 14px;
-                border-radius: 10px; background: rgba(0,0,0,.65); color: #fff; font-size: 20px;
-                font-weight: bold; text-align: center; }
-      .steps { padding-left: 22px; font-size: 15px; }
-      .steps li { padding: 3px 0; color: #666; }
-      .steps li.current { color: #1f4fd1; font-weight: bold; }
-      .steps li.done { color: #1a7f37; }
-      .steps li.done::after { content: " ✓"; }
+      .guide { position: absolute; inset: 0; pointer-events: none; display: none; overflow: hidden; }
+      .guide::after {
+        content: ""; position: absolute; left: 50%; top: 47%; width: 44%; height: 76%; transform: translate(-50%, -50%);
+        border: 2px dashed rgba(255,255,255,.6); border-radius: 50%; box-shadow: 0 0 0 9999px rgba(5,7,13,.32);
+      }
+      .stage.is-live .guide { display: block; }
+      .stage-chip {
+        position: absolute; top: 12px; left: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 8px;
+        padding: 6px 10px; border-radius: 999px; background: rgba(5,7,13,.62); color: #fff;
+        font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; backdrop-filter: blur(6px);
+      }
+      .rec { display: inline-flex; align-items: center; gap: 6px; color: #fda4af; font-size: 12px; letter-spacing: .08em; }
+      .rec::before { content: ""; width: 9px; height: 9px; border-radius: 999px; background: #f43f5e; animation: pulse 1s infinite; }
+      .prompt {
+        position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 2; padding: 12px 16px;
+        border-radius: 12px; background: rgba(5,7,13,.72); color: #fff; backdrop-filter: blur(8px);
+        font-size: clamp(16px, 2.6vw, 20px); font-weight: 700; text-align: center; letter-spacing: -.01em;
+      }
+      @keyframes pulse { 50% { opacity: .35; } }
+
+      .steps { list-style: none; counter-reset: g; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+      .steps:empty { display: none; }
+      .steps li {
+        counter-increment: g; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+        border-radius: 11px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-size: 14px;
+      }
+      .steps li::before {
+        content: counter(g); width: 24px; height: 24px; border-radius: 999px; flex: none; display: grid; place-items: center;
+        font-size: 12px; font-weight: 700; background: var(--surface); border: 1px solid var(--border);
+      }
+      .steps li.current { color: var(--text); font-weight: 600; border-color: var(--primary); background: var(--primary-soft); }
+      .steps li.current::before { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+      .steps li.done { color: var(--success); }
+      .steps li.done::before { content: "✓"; background: var(--success); border-color: var(--success); color: #fff; }
+
+      .phrase {
+        margin: 12px 0 0; padding: 14px 16px; border-radius: 12px; font-size: clamp(17px, 2.4vw, 20px);
+        line-height: 1.5; font-weight: 600; background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+      }
+      .phrase::before {
+        content: "Lee en voz alta"; display: block; margin-bottom: 4px; font-size: 11px; font-weight: 700;
+        letter-spacing: .08em; text-transform: uppercase; color: var(--primary);
+      }
+
+      /* ---------- Resultados ---------- */
+      .result-card { padding: 18px; }
+      @media (min-width: 720px) { .result-card { padding: 22px; } }
+      .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+      .result-head h2 { font-size: 16px; margin: 0; }
+      .result-head span { color: var(--muted); font-size: 13px; }
+
+      .empty { text-align: center; padding: 36px 12px; color: var(--muted); }
+      .empty-icon {
+        width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 16px; display: grid; place-items: center;
+        background: var(--surface-2); color: var(--faint);
+      }
+      .empty b { display: block; color: var(--text); margin-bottom: 4px; }
+      .empty p { margin: 0; font-size: 14px; }
+
+      .loading { display: flex; gap: 14px; align-items: center; padding: 22px 4px; }
+      .loading b { display: block; }
+      .loading p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+      .spinner {
+        width: 34px; height: 34px; border-radius: 999px; flex: none;
+        border: 3px solid var(--primary-soft); border-top-color: var(--primary); animation: spin .8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .verdict {
+        display: flex; gap: 14px; align-items: flex-start; padding: 16px; border-radius: 14px;
+        border: 1px solid transparent;
+      }
+      .verdict-icon { width: 44px; height: 44px; border-radius: 999px; flex: none; display: grid; place-items: center; color: #fff; }
+      .verdict h3 { margin: 2px 0 4px; font-size: 19px; letter-spacing: -.015em; }
+      .verdict p { margin: 0; font-size: 14px; }
+      .verdict .meta { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
+      .verdict--approved { background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 30%, transparent); }
+      .verdict--approved .verdict-icon { background: var(--success); }
+      .verdict--approved h3 { color: var(--success); }
+      .verdict--rejected, .verdict--error { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+      .verdict--rejected .verdict-icon, .verdict--error .verdict-icon { background: var(--danger); }
+      .verdict--rejected h3, .verdict--error h3 { color: var(--danger); }
+      .codes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+      .code-chip {
+        font: 11.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 5px 8px; border-radius: 6px;
+        background: var(--surface); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+      }
+
+      .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+      @media (min-width: 560px) { .tiles.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } .tiles.three { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+      @media (min-width: 1000px) and (max-width: 1180px) { .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 559px) { .tiles.three .tile:last-child { grid-column: 1 / -1; } }
+      .tile { padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); min-width: 0; }
+      .tile small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
+      .tile small::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: var(--faint); }
+      .tile.passed small::before { background: var(--success); }
+      .tile.failed small::before { background: var(--danger); }
+      .tile strong { display: block; font-size: 22px; letter-spacing: -.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+      .panel { border: 1px solid var(--border); border-radius: 12px; margin-top: 10px; background: var(--surface); }
+      .panel > summary {
+        list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 13px 14px; font-weight: 600; font-size: 14.5px;
+      }
+      .panel > summary::-webkit-details-marker { display: none; }
+      .panel-title { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+      .panel-title svg { color: var(--primary); flex: none; }
+      .panel > summary::after {
+        content: ""; width: 8px; height: 8px; flex: none; margin-left: 4px; border-right: 2px solid var(--faint);
+        border-bottom: 2px solid var(--faint); transform: rotate(45deg) translateY(-2px); transition: transform .15s;
+      }
+      .panel[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+      .panel > summary .pill { margin-left: auto; }
+      .panel-body { padding: 0 14px 14px; }
+      .pill { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+      .pill--passed { background: var(--success-soft); color: var(--success); }
+      .pill--failed { background: var(--danger-soft); color: var(--danger); }
+      .pill--not_evaluated { background: var(--surface-2); color: var(--muted); }
+
+      .checks { list-style: none; padding: 0; margin: 0 0 4px; display: grid; gap: 2px; }
+      .checks li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 13.5px; border-bottom: 1px dashed var(--border); }
+      .checks li:last-child { border-bottom: 0; }
+      .checks .ic { width: 20px; height: 20px; border-radius: 999px; flex: none; display: grid; place-items: center; margin-top: 1px; color: #fff; }
+      .checks .passed .ic { background: var(--success); }
+      .checks .failed .ic { background: var(--danger); }
+      .checks .not_evaluated { color: var(--muted); }
+      .checks .not_evaluated .ic { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+      .checks code { color: var(--danger); margin-left: 4px; }
+
+      .sub { margin: 14px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+      .big { font-size: 30px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+      .big small { font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+      .ok { color: var(--success); } .bad { color: var(--danger); }
+
+      .meter { display: grid; gap: 6px; }
+      .meter-row { display: grid; grid-template-columns: minmax(84px, 120px) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; }
+      .meter-row > span:first-child { color: var(--muted); }
+      .meter-row > b { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+      .bar { position: relative; height: 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
+      .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--primary); }
+      .bar-fill.ok { background: var(--success); } .bar-fill.bad { background: var(--danger); }
+      .bar-thr { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); opacity: .55; border-radius: 2px; }
+
+      .kv { margin: 0; display: grid; gap: 0; font-size: 13.5px; }
+      .kv > div { display: grid; grid-template-columns: minmax(110px, 38%) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+      .kv > div:last-child { border-bottom: 0; }
+      .kv dt { color: var(--muted); }
+      .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+      @media (max-width: 420px) { .kv > div { grid-template-columns: 1fr; gap: 2px; } }
+
+      .compare { display: grid; gap: 8px; }
+      @media (min-width: 560px) { .compare { grid-template-columns: 1fr 1fr; } }
+      .quote { padding: 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-size: 14px; }
+      .quote small { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+      .words { display: flex; flex-wrap: wrap; gap: 4px; }
+      .word { font-size: 12px; padding: 2px 7px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+      .none { color: var(--muted); }
+
+      .timeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+      .timeline li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; }
+      .timeline li b { font-weight: 600; }
+
+      .json { margin-top: 12px; }
+      .json summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 600; }
+      pre {
+        white-space: pre-wrap; word-break: break-word; margin: 10px 0 0; padding: 12px; border-radius: 10px;
+        background: var(--surface-2); border: 1px solid var(--border); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        max-height: 420px; overflow: auto;
+      }
+
+      footer { border-top: 1px solid var(--border); padding: 20px 0 32px; color: var(--muted); font-size: 13px; }
+      footer .container { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; }
+      footer code { color: var(--text); }
+
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     </style>
   </head>
   <body data-min="{{ min_duration_sec }}" data-max="{{ max_duration_sec }}"
         data-turn="{{ turn_offset }}" data-blink-closed="{{ blink_closed }}" data-blink-open="{{ blink_open }}">
-    <h2>Verificacion de identidad</h2>
-    <p class="muted">
-      Compara el rostro del video contra la identificacion, revisa los gestos del reto y verifica
-      la frase hablada en el mismo video (<code>POST /api/challenge</code> y <code>POST /api/verify-identity</code>).
-    </p>
-    <p class="muted">
-      API key (si el servidor tiene <code>API_KEYS</code>):
-      <input type="password" id="apiKey" autocomplete="off" style="width:320px" placeholder="X-API-Key" />
-    </p>
 
-    <div class="row">
-      <div class="card">
-        <h3>1) Sube la identificacion</h3>
-        <input type="file" id="idFile" accept="image/*" />
-        <div id="idPrevBox" style="margin-top:8px"></div>
-
-        <h3>2) Graba el video siguiendo el reto</h3>
-        <p class="muted">Al iniciar se pide un reto nuevo: primero haz los gestos uno por uno y despues lee
-          la frase en voz alta. Mira a la camara. Maximo {{ max_duration_sec }}s.</p>
-
-        <div class="stage">
-          <video id="preview" class="mirror" autoplay muted playsinline></video>
-          <div class="prompt" id="prompt" hidden></div>
+    <header class="topbar">
+      <div class="container">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          </span>
+          <span class="brand-name">Verificación de identidad</span>
+          <span class="tag">Demo</span>
         </div>
-        <ol class="steps" id="steps"></ol>
-        <div class="phrase" id="phrase" hidden></div>
-        <div class="timer" id="timer">00.0 s</div>
+        <div class="spacer"></div>
+        <a class="link hide-sm" href="docs" target="_blank" rel="noopener">API docs</a>
+        <details class="settings">
+          <summary aria-label="Configuración">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>
+            <span class="hide-sm">API key</span>
+          </summary>
+          <div class="settings-panel">
+            <div class="field">
+              <label for="apiKey">X-API-Key</label>
+              <input class="input" type="password" id="apiKey" autocomplete="off" placeholder="Opcional" />
+            </div>
+            <p>Solo hace falta si el servidor tiene <code>API_KEYS</code> configurado. Se manda en cada solicitud.</p>
+          </div>
+        </details>
+      </div>
+    </header>
 
-        <button id="btnRec">Iniciar reto y grabar</button>
-        <button id="btnStop" disabled>Terminar</button>
-        <p class="muted" id="mpStatus">Cargando detector de gestos...</p>
-        <p class="muted" style="margin:10px 0 4px">o sube un video ya grabado (sin reto solo funciona con
-          <code>REQUIRE_CHALLENGE=false</code>):</p>
-        <input type="file" id="videoFile" accept="video/*" />
-        <p class="warn" id="warn"></p>
+    <main class="container">
+      <section class="hero">
+        <h1>Verifica a una persona contra su INE en segundos</h1>
+        <p>Compara el rostro con la identificación, confirma que es una persona real frente a la cámara
+          y valida un reto de gestos y una frase hablada, todo en una sola grabación.</p>
+        <div class="features">
+          <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>Rostro vs. INE</span>
+          <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>Frase hablada</span>
+          <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Prueba de vida</span>
+          <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-2a2 2 0 0 0-4 0"/></svg>Reto de gestos</span>
+        </div>
+      </section>
 
-        <h3>3) Verificar</h3>
-        <p class="muted">% minimo de similitud facial:
-          <input type="number" id="thr" min="1" max="100" step="any" placeholder="70" style="width:70px" /></p>
-        <button id="btnSend" class="primary" disabled>Verificar identidad</button>
-        <p class="muted" id="sendHint">Falta: identificacion y video.</p>
+      <div class="tabs" role="tablist" aria-label="Modo de verificación">
+        <button class="tab" role="tab" id="tabVideo" aria-controls="flowVideo" aria-selected="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+          Video con reto
+        </button>
+        <button class="tab" role="tab" id="tabPhoto" aria-controls="flowPhoto" aria-selected="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+          Foto vs. INE
+        </button>
       </div>
 
-      <div class="card">
-        <h3>Resultado</h3>
-        <div id="result"><p class="muted">Aun sin resultado.</p></div>
+      <!-- ================= Flujo 1: video con reto ================= -->
+      <section id="flowVideo" role="tabpanel" aria-labelledby="tabVideo">
+        <div class="workspace">
+          <div class="stack">
+            <article class="card step" id="stepId">
+              <div class="step-head">
+                <div class="step-num"><span>1</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+                <div>
+                  <h2>Sube la identificación</h2>
+                  <p>Foto clara del frente de la INE.</p>
+                </div>
+              </div>
+              <label class="dropzone">
+                <input type="file" id="idFile" accept="image/*" />
+                <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h4M14 14h4"/></svg></span>
+                <span><b>Arrastra la imagen o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 10 MB</small></span>
+              </label>
+              <div id="idPrevBox"></div>
+            </article>
+
+            <article class="card step" id="stepVideo">
+              <div class="step-head">
+                <div class="step-num"><span>2</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+                <div>
+                  <h2>Graba el video siguiendo el reto</h2>
+                  <p>Al iniciar se pide un reto nuevo. Haz los gestos uno por uno y después lee la frase en voz alta,
+                    mirando a la cámara. Máximo {{ max_duration_sec }} s.</p>
+                </div>
+              </div>
+
+              <div class="stage is-live" id="stage">
+                <video id="preview" class="mirror" autoplay muted playsinline></video>
+                <div class="guide" aria-hidden="true"></div>
+                <div class="stage-chip" id="timer">00.0 s</div>
+                <div class="prompt" id="prompt" hidden></div>
+              </div>
+              <ol class="steps" id="steps"></ol>
+              <div class="phrase" id="phrase" hidden></div>
+
+              <div class="actions" style="margin-top:14px">
+                <button class="btn btn-rec" id="btnRec">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>
+                  Iniciar reto y grabar
+                </button>
+                <button class="btn" id="btnStop" disabled>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+                  Terminar
+                </button>
+              </div>
+              <p class="status-line" id="mpStatus" data-state="loading">Cargando detector de gestos...</p>
+
+              <div class="divider">o sube un video</div>
+              <label class="dropzone compact">
+                <input type="file" id="videoFile" accept="video/*" />
+                <span class="dz-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg></span>
+                <span><b>Video ya grabado</b><small>Sin reto solo funciona con <code>REQUIRE_CHALLENGE=false</code></small></span>
+              </label>
+              <p class="warn" id="warn"></p>
+            </article>
+
+            <article class="card step" id="stepSend">
+              <div class="step-head">
+                <div class="step-num"><span>3</span></div>
+                <div>
+                  <h2>Verificar</h2>
+                  <p>Se analizan rostro, gestos, voz y prueba de vida en una sola llamada.</p>
+                </div>
+              </div>
+              <div class="field" style="margin-bottom:14px">
+                <label for="thr">Similitud facial mínima</label>
+                <div class="input-suffix"><input class="input" type="number" id="thr" min="1" max="100" step="any" placeholder="70" inputmode="decimal" /></div>
+              </div>
+              <button id="btnSend" class="btn btn-primary btn-block" disabled>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                Verificar identidad
+              </button>
+              <p class="hint" id="sendHint">Falta: identificacion y video.</p>
+            </article>
+          </div>
+
+          <aside class="result-col">
+            <div class="card result-card">
+              <div class="result-head"><h2>Resultado</h2><span>POST /api/verify-identity</span></div>
+              <div id="result"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= Flujo 2: foto contra identificación ================= -->
+      <section id="flowPhoto" role="tabpanel" aria-labelledby="tabPhoto" hidden>
+        <div class="workspace">
+          <div class="stack">
+            <article class="card step" id="pStepId">
+              <div class="step-head">
+                <div class="step-num"><span>1</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+                <div>
+                  <h2>Sube la identificación</h2>
+                  <p>Foto clara del frente de la INE.</p>
+                </div>
+              </div>
+              <label class="dropzone">
+                <input type="file" id="pIdFile" accept="image/*" />
+                <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h4M14 14h4"/></svg></span>
+                <span><b>Arrastra la imagen o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 10 MB</small></span>
+              </label>
+              <div id="pIdPrevBox"></div>
+            </article>
+
+            <article class="card step" id="pStepPhoto">
+              <div class="step-head">
+                <div class="step-num"><span>2</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+                <div>
+                  <h2>Foto de la persona</h2>
+                  <p>Una selfie de frente, con buena luz y sin lentes oscuros.</p>
+                </div>
+              </div>
+              <label class="dropzone">
+                <input type="file" id="pPhotoFile" accept="image/*" />
+                <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></span>
+                <span><b>Arrastra la foto o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 10 MB</small></span>
+              </label>
+
+              <div class="divider">o tómala con la cámara</div>
+              <div class="stage is-live" id="pCamWrap" hidden>
+                <video id="pCam" class="mirror" autoplay muted playsinline style="display:none"></video>
+                <div class="guide" aria-hidden="true"></div>
+              </div>
+              <div class="actions" style="margin-top:12px">
+                <button class="btn" id="pBtnCam">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                  Activar cámara
+                </button>
+                <button class="btn btn-primary" id="pBtnShot" disabled>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+                  Tomar foto
+                </button>
+              </div>
+              <p class="warn" id="pWarn"></p>
+              <div id="pPhotoPrevBox"></div>
+            </article>
+
+            <article class="card step" id="pStepSend">
+              <div class="step-head">
+                <div class="step-num"><span>3</span></div>
+                <div>
+                  <h2>Verificar</h2>
+                  <p>Compara las caras, valida la calidad de la foto y revisa que sea una persona real.</p>
+                </div>
+              </div>
+              <div class="field" style="margin-bottom:14px">
+                <label for="pThr">Similitud facial mínima</label>
+                <div class="input-suffix"><input class="input" type="number" id="pThr" min="1" max="100" step="any" placeholder="70" inputmode="decimal" /></div>
+              </div>
+              <button id="pBtnSend" class="btn btn-primary btn-block" disabled>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                Comparar foto
+              </button>
+              <p class="hint" id="pSendHint">Falta: identificacion y foto.</p>
+            </article>
+          </div>
+
+          <aside class="result-col">
+            <div class="card result-card">
+              <div class="result-head"><h2>Resultado</h2><span>POST /api/verify-photo</span></div>
+              <div id="pResult"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <span>Demo técnica · el resultado lo decide el servidor, no el navegador.</span>
+        <span><code>/api/challenge</code> · <code>/api/verify-identity</code> · <code>/api/verify-photo</code></span>
       </div>
-    </div>
+    </footer>
 
     <script>
       const $ = (id) => document.getElementById(id);
       const authHeaders = () => ($("apiKey").value ? { "X-API-Key": $("apiKey").value } : {});
       const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+      // ---------------- Presentacion (solo UI) ----------------
+      const SVG = (d, w = 12, sw = 3.2) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+      const I = {
+        check: SVG('<path d="M20 6 9 17l-5-5"/>'),
+        x: SVG('<path d="M18 6 6 18M6 6l12 12"/>'),
+        minus: SVG('<path d="M5 12h14"/>'),
+        checkBig: SVG('<path d="M20 6 9 17l-5-5"/>', 22, 3),
+        xBig: SVG('<path d="M18 6 6 18M6 6l12 12"/>', 22, 3),
+        face: SVG('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>', 16, 2),
+        hand: SVG('<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-2a2 2 0 0 0-4 0"/>', 16, 2),
+        mic: SVG('<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>', 16, 2),
+        pulse: SVG('<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>', 16, 2),
+        image: SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>', 16, 2),
+        shield: SVG('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>', 26, 1.8),
+      };
+      const STATUS_LABEL = { passed: "Correcto", failed: "Con fallas", not_evaluated: "Sin evaluar" };
+      const DECISION = { approved: "Identidad aprobada", rejected: "Identidad rechazada" };
+
+      const kb = (n) => n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+      const clamp = (x) => Math.max(0, Math.min(100, Number(x) || 0));
+      const num = (x, d = 1) => (x == null || isNaN(x) ? "&mdash;" : `${Number(x).toFixed(d)}%`);
+
+      function previewCard(file, tall) {
+        return `<figure class="preview${tall ? " tall" : ""}"><img alt="" src="${URL.createObjectURL(file)}">
+          <figcaption><b>${esc(file.name)}</b><span>${kb(file.size)}</span></figcaption></figure>`;
+      }
+
+      function emptyState(text) {
+        return `<div class="empty"><div class="empty-icon">${I.shield}</div><b>Aún sin resultado</b><p>${text}</p></div>`;
+      }
+
+      function loadingState(title, text) {
+        return `<div class="loading"><span class="spinner" aria-hidden="true"></span><div><b>${title}</b><p>${text}</p></div></div>`;
+      }
+
+      function errorState(title, body) {
+        return `<div class="verdict verdict--error"><div class="verdict-icon">${I.xBig}</div><div style="min-width:0">
+          <h3>${esc(title)}</h3><p>La solicitud no se pudo procesar.</p></div></div><pre>${esc(body)}</pre>`;
+      }
+
+      function groupStatus(group) {
+        const s = Object.values(group || {}).map((c) => c.status);
+        if (s.includes("failed")) return "failed";
+        if (s.length && s.every((x) => x === "passed")) return "passed";
+        return "not_evaluated";
+      }
+
+      function verdict(d) {
+        const r = d.result;
+        const codes = r.failed_checks.length
+          ? `<div class="codes">${r.failed_checks.map((x) => `<span class="code-chip">${esc(x)}</span>`).join("")}</div>` : "";
+        return `<div class="verdict verdict--${esc(r.decision)}">
+            <div class="verdict-icon">${r.approved ? I.checkBig : I.xBig}</div>
+            <div style="min-width:0">
+              <h3>${esc(DECISION[r.decision] || r.decision)}</h3>
+              <p>${esc(r.summary)}</p>${codes}
+              <div class="meta">${(d.processing_time_ms / 1000).toFixed(1)} s de análisis · solicitud ${esc(d.request_id.slice(0, 8))}</div>
+            </div>
+          </div>`;
+      }
+
+      function tiles(list, cls) {
+        return `<div class="tiles ${cls}">` + list.map((t) =>
+          `<div class="tile ${t.status}"><small>${t.label}</small><strong>${t.value}</strong></div>`).join("") + "</div>";
+      }
+
+      function panel(title, icon, group, body) {
+        const st = groupStatus(group);
+        return `<details class="panel" open><summary><span class="panel-title">${icon}${title}</span>
+          <span class="pill pill--${st}">${STATUS_LABEL[st]}</span></summary><div class="panel-body">${body}</div></details>`;
+      }
+
+      function meterRow(label, value, threshold, ok, text) {
+        const thr = threshold != null ? `<i class="bar-thr" style="left:${clamp(threshold)}%" title="Umbral"></i>` : "";
+        return `<div class="meter-row"><span>${label}</span>
+          <div class="bar"><span class="bar-fill ${ok == null ? "" : ok ? "ok" : "bad"}" style="width:${clamp(value)}%"></span>${thr}</div>
+          <b class="${ok == null ? "" : ok ? "ok" : "bad"}">${text}</b></div>`;
+      }
+
+      const kv = (rows) => `<dl class="kv">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>`;
+      const jsonBlock = (d) => `<details class="json"><summary>Ver JSON completo</summary><pre>${esc(JSON.stringify(d, null, 2))}</pre></details>`;
+
+      function setDone(id, done) { $(id).classList.toggle("is-done", !!done); }
+
+      // En una sola columna el resultado queda abajo: se lleva la vista hasta el.
+      function revealResult(id) {
+        if (window.matchMedia("(max-width: 999px)").matches) $(id).closest(".result-col").scrollIntoView({ behavior: "smooth" });
+      }
+
+      // Arrastrar y soltar: asigna el archivo al input y dispara su onchange.
+      function dropzone(inputId) {
+        const input = $(inputId), zone = input.closest(".dropzone");
+        ["dragenter", "dragover"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add("is-drag"); }));
+        ["dragleave", "drop"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove("is-drag"); }));
+        zone.addEventListener("drop", (e) => {
+          if (!e.dataTransfer.files.length) return;
+          input.files = e.dataTransfer.files;
+          input.dispatchEvent(new Event("change"));
+        });
+      }
+
+      // Pestañas
+      function selectTab(name) {
+        const video = name !== "photo";
+        $("tabVideo").setAttribute("aria-selected", video);
+        $("tabPhoto").setAttribute("aria-selected", !video);
+        $("flowVideo").hidden = !video;
+        $("flowPhoto").hidden = video;
+      }
+      $("tabVideo").onclick = () => selectTab("video");
+      $("tabPhoto").onclick = () => selectTab("photo");
 
       let stream, recorder, chunks = [], tick, t0;
       let videoBlob = null, videoMime = "", idFile = null;
@@ -154,10 +783,12 @@
             `${MODELS}/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
             { numHands: 2 });
           $("mpStatus").textContent = "Detector de gestos listo.";
+          $("mpStatus").dataset.state = "ready";
         } catch (e) {
           faceLm = handLm = null;
           $("mpStatus").textContent = "No se pudo cargar el detector de gestos (" + e.message +
             "). Puedes grabar igual: haz los gestos en orden; el servidor los revisa.";
+          $("mpStatus").dataset.state = "error";
         }
       }
 
@@ -243,6 +874,8 @@
         if (!videoBlob) missing.push("video");
         $("btnSend").disabled = missing.length > 0;
         $("sendHint").textContent = missing.length ? "Falta: " + missing.join(" y ") + "." : "Listo para enviar.";
+        setDone("stepId", idFile);
+        setDone("stepVideo", videoBlob);
       }
 
       async function init() {
@@ -265,18 +898,19 @@
         const v = $("preview");
         v.srcObject = null; v.src = src; v.muted = false; v.controls = true;
         v.classList.remove("mirror");
+        $("stage").classList.remove("is-live");
       }
 
       function showLive() {
         const v = $("preview");
         v.src = ""; v.controls = false; v.muted = true; v.srcObject = stream;
         v.classList.add("mirror");
+        $("stage").classList.add("is-live");
       }
 
       $("idFile").onchange = (e) => {
         idFile = e.target.files[0] || null;
-        $("idPrevBox").innerHTML = idFile
-          ? `<img class="prev" style="max-height:180px" src="${URL.createObjectURL(idFile)}">` : "";
+        $("idPrevBox").innerHTML = idFile ? previewCard(idFile) : "";
         refreshSend();
       };
 
@@ -359,7 +993,8 @@
 
       $("btnSend").onclick = async () => {
         $("btnSend").disabled = true;
-        $("result").innerHTML = '<p class="muted">Analizando voz, rostro y gestos...</p>';
+        $("result").innerHTML = loadingState("Analizando voz, rostro y gestos...", "Puede tardar unos segundos; el servidor revisa todo el video.");
+        revealResult("result");
 
         const ext = (videoMime || "").includes("mp4") ? "mp4" : "webm";
         const fd = new FormData();
@@ -372,11 +1007,12 @@
           const res = await fetch("api/verify-identity", { method: "POST", body: fd, headers: authHeaders() });
           render(res.status, await res.json());
         } catch (e) {
-          $("result").innerHTML = `<span class="badge b-error">error</span><pre>${esc(e.message)}</pre>`;
+          $("result").innerHTML = errorState("Error", e.message);
         }
         // El reto ya se gasto: para reintentar hay que grabar con uno nuevo.
         if (challenge) {
           challenge = null; videoBlob = null;
+          setDone("stepVideo", false);
           $("sendHint").textContent = "El reto ya se uso: graba de nuevo para otro intento.";
           $("btnSend").disabled = true;
           return;
@@ -384,11 +1020,11 @@
         refreshSend();
       };
 
-      const ICON = { passed: "✓", failed: "✗", not_evaluated: "–" };
+      const ICON = { passed: I.check, failed: I.x, not_evaluated: I.minus };
       const pct = (x) => (x == null ? "&mdash;" : `${Math.round(x * 100)}%`);
       const words = (arr) => arr.length
-        ? arr.map((w) => `<code>${esc(w)}</code>`).join(" ")
-        : "<span class='muted'>ninguna</span>";
+        ? `<span class="words">${arr.map((w) => `<span class="word">${esc(w)}</span>`).join("")}</span>`
+        : "<span class='none'>ninguna</span>";
 
       function renderChecks(group) {
         return "<ul class='checks'>" + Object.entries(group).map(([name, c]) =>
@@ -400,43 +1036,53 @@
       function renderFace(checks, f) {
         let html = renderChecks(checks);
         if (!f) return html;
+        const thr = f.similarity.threshold_percent;
         const segs = f.segments.map((s) => {
-          const when = s.time_sec != null ? `${s.time_sec.toFixed(1)}s` : "&mdash;";
-          const score = s.face_detected ? `${s.similarity_percent.toFixed(1)}%` : "sin cara";
-          return `<tr><td>Tramo ${s.index} (${when})</td>
-                  <td><span class="${s.match ? "ok" : "bad"}">${score} ${s.match ? "✓" : "✗"}</span></td></tr>`;
+          const when = s.time_sec != null ? ` · ${s.time_sec.toFixed(1)} s` : "";
+          return meterRow(`Tramo ${s.index}${when}`, s.face_detected ? s.similarity_percent : 0, thr, s.match,
+            s.face_detected ? `${s.similarity_percent.toFixed(1)}%` : "sin cara");
         }).join("");
         return html + `
-          <div class="big">${f.similarity.average_percent.toFixed(2)}%</div>
-          <p class="muted" style="margin-top:0">Promedio de ${f.segments.length} tramos · minimo por tramo ${f.similarity.threshold_percent}% · caras por cuadro (max): ${f.faces_in_video.max_per_frame}</p>
-          <table>${segs}</table>`;
+          <div class="sub">Similitud promedio</div>
+          <div class="big">${f.similarity.average_percent.toFixed(2)}%<small>mínimo por tramo ${thr}%</small></div>
+          <div class="sub">Por tramo del video</div>
+          <div class="meter">${segs}</div>
+          <p class="hint">Caras por cuadro (máximo): ${f.faces_in_video.max_per_frame}. La línea marca el umbral.</p>`;
       }
 
       function renderVoice(checks, v) {
         let html = renderChecks(checks);
         if (!v) return html;
         return html + `
+          <div class="sub">Coincidencia de la frase</div>
           <div class="big">${v.phrase_match.match_percent.toFixed(2)}%</div>
-          <table>
-            <tr><td>Frase pedida</td><td>${esc(v.expected_phrase)}</td></tr>
-            <tr><td>Se escucho</td><td><b>${esc(v.transcript) || "(nada)"}</b></td></tr>
-            <tr><td>Palabras faltantes</td><td>${words(v.phrase_match.missing_words)}</td></tr>
-            <tr><td>Palabras sobrantes</td><td>${words(v.phrase_match.extra_words)}</td></tr>
-            <tr><td>Duracion</td><td>${v.audio.duration_sec}s (voz ${v.audio.speech_sec}s)</td></tr>
-          </table>`;
+          <div class="compare" style="margin-top:10px">
+            <div class="quote"><small>Frase pedida</small>${esc(v.expected_phrase)}</div>
+            <div class="quote"><small>Se escuchó</small><b>${esc(v.transcript) || "(nada)"}</b></div>
+          </div>
+          <div style="margin-top:8px">${kv([
+            ["Palabras faltantes", words(v.phrase_match.missing_words)],
+            ["Palabras sobrantes", words(v.phrase_match.extra_words)],
+            ["Duración", `${v.audio.duration_sec} s (voz ${v.audio.speech_sec} s)`],
+          ])}</div>`;
       }
 
       function renderLiveness(checks, l) {
         let html = renderChecks(checks);
         if (!l) return html;
         const a = l.anti_spoofing, s = l.lip_sync;
+        const segs = a.by_segment_probability.map((x, i) =>
+          meterRow(`Tramo ${i + 1}`, (x ?? 0) * 100, null, null, pct(x))).join("");
         return html + `
-          <table>
-            <tr><td>Probabilidad de cara real</td><td>${pct(a.real_probability)}
-              <div class="muted">${a.by_segment_probability.map((x, i) => `tramo ${i + 1}: ${pct(x)}`).join(" · ")}</div></td></tr>
-            <tr><td>Labios vs. voz</td><td>correlacion ${s.audio_correlation ?? "-"} · movimiento ${s.mouth_motion_speaking ?? "-"}
-              · cara visible ${pct(s.face_tracked_ratio)}</td></tr>
-          </table>`;
+          <div class="sub">Probabilidad de cara real</div>
+          <div class="big">${pct(a.real_probability)}</div>
+          <div class="meter" style="margin-top:8px">${segs}</div>
+          <div class="sub">Labios vs. voz</div>
+          ${kv([
+            ["Correlación", s.audio_correlation ?? "-"],
+            ["Movimiento al hablar", s.mouth_motion_speaking ?? "-"],
+            ["Cara visible", pct(s.face_tracked_ratio)],
+          ])}`;
       }
 
       const GESTURE = {
@@ -447,77 +1093,40 @@
       function renderChallenge(checks, c) {
         let html = renderChecks(checks);
         if (!c) return html;
-        const rows = c.gestures.map((g, i) => `<tr><td>${i + 1}. ${GESTURE[g.gesture]}</td>
-          <td><span class="${g.detected ? "ok" : "bad"}">${g.detected ? `✓ segundo ${g.time_sec}` : "✗ no detectado"}</span></td></tr>`).join("");
+        const rows = c.gestures.map((g, i) => `<li><b>${i + 1}. ${GESTURE[g.gesture]}</b>
+          <span class="${g.detected ? "ok" : "bad"}">${g.detected ? `✓ segundo ${g.time_sec}` : "✗ no detectado"}</span></li>`).join("");
         const m = c.measurements;
-        return html + `<table>${rows}
-          ${m ? `<tr><td>Medido</td><td class="muted">giro max izq ${m.max_turn_left ?? "-"} / der ${m.max_turn_right ?? "-"}
-            (umbral ${m.turn_threshold}) · parpadeo max ${pct(m.max_blink_probability)}</td></tr>` : ""}
-          </table>`;
+        return html + `<div class="sub">Orden del reto</div><ol class="timeline">${rows}</ol>
+          ${m ? `<div class="sub">Medido</div>${kv([
+            ["Giro máximo", `izq ${m.max_turn_left ?? "-"} / der ${m.max_turn_right ?? "-"} (umbral ${m.turn_threshold})`],
+            ["Parpadeo máximo", pct(m.max_blink_probability)],
+          ])}` : ""}`;
       }
 
       function render(status, d) {
         if (status !== 200) {
-          $("result").innerHTML = `<span class="badge b-error">HTTP ${status}</span><pre>${esc(JSON.stringify(d, null, 2))}</pre>`;
+          $("result").innerHTML = errorState(`HTTP ${status}`, JSON.stringify(d, null, 2));
           return;
         }
-        const r = d.result;
-        const failed = r.failed_checks.length
-          ? `<p class="muted" style="margin:6px 0 0">${r.failed_checks.map((x) => `<code>${esc(x)}</code>`).join(" ")}</p>` : "";
-        $("result").innerHTML = `
-          <div class="overall">
-            <span class="badge b-${esc(r.decision)}">${esc(r.decision)}</span>
-            <span class="muted">&nbsp;${d.processing_time_ms} ms · ${esc(d.request_id.slice(0, 8))}</span>
-            <p style="margin:8px 0 0">${esc(r.summary)}</p>${failed}
-          </div>
-          <div class="section"><h3>Rostro (video vs identificacion)</h3>${renderFace(d.checks.face, d.details.face)}</div>
-          <div class="section"><h3>Gestos del reto</h3>${renderChallenge(d.checks.challenge, d.details.challenge)}</div>
-          <div class="section"><h3>Voz (frase)</h3>${renderVoice(d.checks.voice, d.details.voice)}</div>
-          <div class="section"><h3>Prueba de vida</h3>${renderLiveness(d.checks.liveness, d.details.liveness)}</div>
-          <details style="margin-top:12px">
-            <summary class="muted">JSON completo</summary>
-            <pre>${esc(JSON.stringify(d, null, 2))}</pre>
-          </details>`;
+        const f = d.details.face, v = d.details.voice, l = d.details.liveness, c = d.details.challenge;
+        $("result").innerHTML = verdict(d) + tiles([
+          { label: "Rostro", value: num(f?.similarity?.average_percent), status: groupStatus(d.checks.face) },
+          { label: "Gestos", value: c?.gestures ? `${c.gestures.filter((g) => g.detected).length}/${c.gestures.length}` : "&mdash;", status: groupStatus(d.checks.challenge) },
+          { label: "Frase", value: num(v?.phrase_match?.match_percent), status: groupStatus(d.checks.voice) },
+          { label: "Cara real", value: pct(l?.anti_spoofing?.real_probability), status: groupStatus(d.checks.liveness) },
+        ], "four") +
+          panel("Rostro (video vs. identificación)", I.face, d.checks.face, renderFace(d.checks.face, f)) +
+          panel("Gestos del reto", I.hand, d.checks.challenge, renderChallenge(d.checks.challenge, c)) +
+          panel("Voz (frase)", I.mic, d.checks.voice, renderVoice(d.checks.voice, v)) +
+          panel("Prueba de vida", I.pulse, d.checks.liveness, renderLiveness(d.checks.liveness, l)) +
+          jsonBlock(d);
       }
 
+      $("result").innerHTML = emptyState("Sube la identificación, graba el reto y presiona Verificar identidad.");
+      dropzone("idFile");
+      dropzone("videoFile");
       init();
     </script>
-
-    <hr style="margin:48px 0 32px; border:none; border-top:2px solid #eee" />
-
-    <h2>Foto contra identificacion</h2>
-    <p class="muted">
-      Compara una foto de la persona contra la identificacion y valida la calidad de la foto
-      (<code>POST /api/verify-photo</code>).
-    </p>
-
-    <div class="row">
-      <div class="card">
-        <h3>1) Sube la identificacion</h3>
-        <input type="file" id="pIdFile" accept="image/*" />
-        <div id="pIdPrevBox" style="margin-top:8px"></div>
-
-        <h3>2) Foto de la persona</h3>
-        <input type="file" id="pPhotoFile" accept="image/*" />
-        <p class="muted" style="margin:10px 0 4px">o tomala con la camara:</p>
-        <video id="pCam" autoplay muted playsinline style="display:none"></video>
-        <button id="pBtnCam">Activar camara</button>
-        <button id="pBtnShot" disabled>Tomar foto</button>
-        <p class="warn" id="pWarn"></p>
-        <div id="pPhotoPrevBox" style="margin-top:8px"></div>
-
-        <h3>3) Verificar</h3>
-        <p class="muted">% minimo de similitud facial:
-          <input type="number" id="pThr" min="1" max="100" step="any" placeholder="70" style="width:70px" /></p>
-        <button id="pBtnSend" class="primary" disabled>Comparar foto</button>
-        <p class="muted" id="pSendHint">Falta: identificacion y foto.</p>
-      </div>
-
-      <div class="card">
-        <h3>Resultado</h3>
-        <div id="pResult"><p class="muted">Aun sin resultado.</p></div>
-      </div>
-    </div>
 
     <script>
       // Seccion independiente: usa sus propios ids (prefijo "p") y reutiliza
@@ -530,10 +1139,12 @@
         if (!pPhoto) missing.push("foto");
         $("pBtnSend").disabled = missing.length > 0;
         $("pSendHint").textContent = missing.length ? "Falta: " + missing.join(" y ") + "." : "Listo para enviar.";
+        setDone("pStepId", pIdFile);
+        setDone("pStepPhoto", pPhoto);
       }
 
       function pPreview(box, file) {
-        $(box).innerHTML = file ? `<img class="prev" style="max-height:220px" src="${URL.createObjectURL(file)}">` : "";
+        $(box).innerHTML = file ? previewCard(file, box === "pPhotoPrevBox") : "";
       }
 
       $("pIdFile").onchange = (e) => {
@@ -553,6 +1164,7 @@
           pStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
           $("pCam").srcObject = pStream;
           $("pCam").style.display = "block";
+          $("pCamWrap").hidden = false;
           $("pBtnCam").disabled = true;
           $("pBtnShot").disabled = false;
           $("pWarn").textContent = "";
@@ -576,7 +1188,8 @@
 
       $("pBtnSend").onclick = async () => {
         $("pBtnSend").disabled = true;
-        $("pResult").innerHTML = '<p class="muted">Comparando rostros...</p>';
+        $("pResult").innerHTML = loadingState("Comparando rostros...", "Detección, similitud, calidad y prueba de vida.");
+        revealResult("pResult");
 
         const fd = new FormData();
         fd.append("id_image", pIdFile, pIdFile.name);
@@ -587,53 +1200,51 @@
           const res = await fetch("api/verify-photo", { method: "POST", body: fd, headers: authHeaders() });
           pRender(res.status, await res.json());
         } catch (e) {
-          $("pResult").innerHTML = `<span class="badge b-error">error</span><pre>${esc(e.message)}</pre>`;
+          $("pResult").innerHTML = errorState("Error", e.message);
         }
         pRefresh();
       };
 
-      function pQualityRow(label, q) {
-        if (!q) return `<tr><td>${label}</td><td>&mdash;</td></tr>`;
-        return `<tr><td>${label}</td><td>cara ${q.size_px}px · nitidez ${q.sharpness} · brillo ${q.brightness}
-                · detector ${pct(q.detector_score)}</td></tr>`;
+      function pQuality(q) {
+        if (!q) return "&mdash;";
+        return `cara ${q.size_px}px · nitidez ${q.sharpness} · brillo ${q.brightness} · detector ${pct(q.detector_score)}`;
       }
 
       function pRender(status, d) {
         if (status !== 200) {
-          $("pResult").innerHTML = `<span class="badge b-error">HTTP ${status}</span><pre>${esc(JSON.stringify(d, null, 2))}</pre>`;
+          $("pResult").innerHTML = errorState(`HTTP ${status}`, JSON.stringify(d, null, 2));
           return;
         }
-        const r = d.result, det = d.details;
-        const failed = r.failed_checks.length
-          ? `<p class="muted" style="margin:6px 0 0">${r.failed_checks.map((x) => `<code>${esc(x)}</code>`).join(" ")}</p>` : "";
+        const det = d.details;
         const sim = det.similarity;
         const match = d.checks.face.face_match.status === "passed";
+        const a = det.anti_spoofing;
 
-        $("pResult").innerHTML = `
-          <div class="overall">
-            <span class="badge b-${esc(r.decision)}">${esc(r.decision)}</span>
-            <span class="muted">&nbsp;${d.processing_time_ms} ms · ${esc(d.request_id.slice(0, 8))}</span>
-            <p style="margin:8px 0 0">${esc(r.summary)}</p>${failed}
-          </div>
-          <div class="section"><h3>Rostro (foto vs identificacion)</h3>${renderChecks(d.checks.face)}
-            ${sim ? `<div class="big ${match ? "ok" : "bad"}">${sim.percent.toFixed(2)}%</div>
-                     <p class="muted" style="margin-top:0">similitud coseno ${sim.score} · minimo ${sim.threshold_percent}% (coseno ${sim.threshold_score}) · caras en la foto: ${det.faces_in_photo}</p>` : ""}
-          </div>
-          <div class="section"><h3>Calidad de la foto</h3>${renderChecks(d.checks.quality)}
-            <table>
-              ${pQualityRow("Foto", det.photo_face_quality)}
-              ${pQualityRow("Identificacion (no se valida)", det.id_face_quality)}
-            </table>
-          </div>
-          <div class="section"><h3>Prueba de vida</h3>${renderChecks(d.checks.liveness)}
-            ${det.anti_spoofing ? `<table><tr><td>Probabilidad de cara real</td><td>${pct(det.anti_spoofing.real_probability)}
-              <span class="muted">(minimo ${pct(det.anti_spoofing.threshold_probability)})</span></td></tr></table>` : ""}
-          </div>
-          <details style="margin-top:12px">
-            <summary class="muted">JSON completo</summary>
-            <pre>${esc(JSON.stringify(d, null, 2))}</pre>
-          </details>`;
+        $("pResult").innerHTML = verdict(d) + tiles([
+          { label: "Rostro", value: sim ? `${sim.percent.toFixed(1)}%` : "&mdash;", status: groupStatus(d.checks.face) },
+          { label: "Calidad", value: STATUS_LABEL[groupStatus(d.checks.quality)], status: groupStatus(d.checks.quality) },
+          { label: "Cara real", value: pct(a?.real_probability), status: groupStatus(d.checks.liveness) },
+        ], "three") +
+          panel("Rostro (foto vs. identificación)", I.face, d.checks.face, renderChecks(d.checks.face) +
+            (sim ? `<div class="sub">Similitud</div>
+              <div class="big ${match ? "ok" : "bad"}">${sim.percent.toFixed(2)}%<small>mínimo ${sim.threshold_percent}%</small></div>
+              <div class="meter" style="margin-top:8px">${meterRow("Similitud", sim.percent, sim.threshold_percent, match, `${sim.percent.toFixed(1)}%`)}</div>
+              <p class="hint">Similitud coseno ${sim.score} · mínimo coseno ${sim.threshold_score} · caras en la foto: ${det.faces_in_photo}</p>` : "")) +
+          panel("Calidad de la foto", I.image, d.checks.quality, renderChecks(d.checks.quality) + kv([
+            ["Foto", pQuality(det.photo_face_quality)],
+            ["Identificación (no se valida)", pQuality(det.id_face_quality)],
+          ])) +
+          panel("Prueba de vida", I.pulse, d.checks.liveness, renderChecks(d.checks.liveness) +
+            (a ? `<div class="sub">Probabilidad de cara real</div>
+              <div class="meter">${meterRow("Cara real", (a.real_probability ?? 0) * 100, (a.threshold_probability ?? 0) * 100,
+                a.real_probability >= a.threshold_probability, pct(a.real_probability))}</div>
+              <p class="hint">Mínimo requerido: ${pct(a.threshold_probability)}</p>` : "")) +
+          jsonBlock(d);
       }
+
+      $("pResult").innerHTML = emptyState("Sube la identificación y una foto de la persona, y presiona Comparar foto.");
+      dropzone("pIdFile");
+      dropzone("pPhotoFile");
     </script>
   </body>
 </html>
