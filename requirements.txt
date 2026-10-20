@@ -10,3 +10,4 @@ aiofiles==24.1.0
 faster-whisper==1.2.1
 jiwer==4.0.0
 mediapipe==0.10.35
+rapidfuzz==3.14.6

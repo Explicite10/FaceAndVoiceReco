@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 
+import numpy as np
 from fastapi import HTTPException, UploadFile
 
 from app.core.config import settings
@@ -13,11 +14,14 @@ from app.services.gestures import analyze_gestures
 from app.services.liveness import check_liveness
 from app.services.report import build_report
 from app.services.face_service import (
-    compare_image_np_and_video_path,
+    compare_id_and_video_path,
     ensure_image,
+    id_embedding,
     read_as_np_rgb,
 )
 from app.services.upload_io import ALLOWED_VIDEO_EXT, save_upload_to_temp
+
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
 
 
 async def _run_part(coro) -> dict:
@@ -40,6 +44,77 @@ async def _check_gestures(track: dict, gestures: list[str]) -> dict:
     return analyze_gestures(track, gestures)
 
 
+async def _compare_face(
+    id_emb: np.ndarray | CheckError, video_path: str, threshold_percent: float,
+    ventana: tuple[float, float | None] | None = None,
+) -> dict:
+    if isinstance(id_emb, CheckError):
+        raise id_emb
+    return await compare_id_and_video_path(id_emb, video_path, threshold_percent, ventana)
+
+
+# Tolerancia entre el reloj de la pagina y los tiempos que mide el servidor.
+_TOLERANCIA_VENTANA_SEC = 1.0
+
+
+def ventana_valida(ventana: tuple[float, float | None] | None, gestures: dict | None) -> tuple[float, float | None] | None:
+    """El tramo de la frase que manda la pagina, solo si cuadra con el video.
+
+    Debe empezar despues del ultimo gesto que el servidor encontro en el video:
+    asi no se puede apuntar el tramo a otra parte para esconder algo. Si no
+    cuadra, se escucha el audio completo, como antes.
+    """
+    if not ventana or not gestures or not gestures.get("ok"):
+        return None
+    inicio, fin = ventana
+    ultimo = gestures["result"].get("last_gesture_sec")
+    if ultimo is None or inicio < ultimo - _TOLERANCIA_VENTANA_SEC:
+        return None
+    if fin is not None and fin <= inicio:
+        fin = None
+    return (inicio, fin)
+
+
+async def embed_id_image(np_id: np.ndarray) -> np.ndarray:
+    return await asyncio.to_thread(id_embedding, np_id)
+
+
+async def analyze_video(
+    video_path: str,
+    id_emb: np.ndarray | CheckError,
+    expected_phrase: str | None,
+    match_threshold_percent: float,
+    challenge: dict | None,
+    started: float,
+    ventana_frase: tuple[float, float | None] | None = None,
+) -> dict:
+    """Voz, rostro, prueba de vida y gestos sobre un video ya guardado en disco.
+
+    `id_emb` es el vector de la INE, o el error de no haber encontrado su cara:
+    asi ese caso sale en el reporte como cualquier otra validacion fallida.
+    """
+    # Secuencial a proposito: todo es CPU-bound y en paralelo se pelea por los
+    # mismos cores sin terminar antes. Los gestos van primero: con ellos se valida
+    # el tramo de la frase que manda la pagina, y ese tramo lo usan rostro y voz.
+    # Una sola pasada de MediaPipe para labios y gestos.
+    track = await asyncio.to_thread(track_video, video_path, challenge is not None)
+    gestures = await _run_part(_check_gestures(track, challenge["gestures"])) if challenge else None
+    ventana = ventana_valida(ventana_frase, gestures)
+    face = await _run_part(_compare_face(id_emb, video_path, match_threshold_percent, ventana))
+    voice = await _run_part(verify_voice_from_path(video_path, expected_phrase, ventana))
+    # Labios: el habla se mide en la frase y el silencio, en los cuadros sin gestos.
+    liveness = await _run_part(check_liveness(video_path, face, track, ventana))
+
+    return build_report(
+        face=face,
+        voice=voice,
+        liveness=liveness,
+        challenge=challenge,
+        gestures=gestures,
+        elapsed_ms=int((time.time() - started) * 1000),
+    )
+
+
 async def verify_identity(
     id_image: UploadFile,
     video: UploadFile,
@@ -47,7 +122,10 @@ async def verify_identity(
     match_threshold_percent: float | None = None,
     challenge_id: str | None = None,
     client: str | None = None,
+    ventana_frase: tuple[float, float | None] | None = None,
 ) -> dict:
+    """`ventana_frase`: segundos del video en que se leyo la frase, medidos por la
+    pagina. Solo se usa si cuadra con los gestos que encuentra el servidor."""
     t0 = time.time()
     if match_threshold_percent is None:
         match_threshold_percent = settings.face_match_percent
@@ -63,36 +141,20 @@ async def verify_identity(
 
     ensure_image(id_image, "id_image")
     np_id = await read_as_np_rgb(id_image, "id_image")
+    try:
+        id_emb = await embed_id_image(np_id)
+    except CheckError as exc:
+        id_emb = exc
 
-    app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    upload_dir = os.path.join(os.path.dirname(app_dir), "uploads")
     # Se guarda una sola vez: el stream del upload no se puede leer dos veces.
     temp_path = await save_upload_to_temp(
-        video, upload_dir, allowed_ext=ALLOWED_VIDEO_EXT, max_mb=settings.max_video_mb
+        video, UPLOAD_DIR, allowed_ext=ALLOWED_VIDEO_EXT, max_mb=settings.max_video_mb
     )
-
-    gestures = None
     try:
-        # Secuencial a proposito: ambos son CPU-bound y en paralelo se pelean
-        # por los mismos cores sin terminar antes.
-        voice = await _run_part(verify_voice_from_path(temp_path, expected_phrase))
-        face = await _run_part(compare_image_np_and_video_path(np_id, temp_path, match_threshold_percent))
-        # Una sola pasada de MediaPipe para labios y gestos.
-        track = await asyncio.to_thread(track_video, temp_path, challenge is not None)
-        liveness = await _run_part(check_liveness(temp_path, face, track))
-        if challenge is not None:
-            gestures = await _run_part(_check_gestures(track, challenge["gestures"]))
+        return await analyze_video(temp_path, id_emb, expected_phrase, match_threshold_percent, challenge, t0,
+                                   ventana_frase=ventana_frase)
     finally:
         try:
             os.remove(temp_path)
         except Exception:
             pass
-
-    return build_report(
-        face=face,
-        voice=voice,
-        liveness=liveness,
-        challenge=challenge,
-        gestures=gestures,
-        elapsed_ms=int((time.time() - t0) * 1000),
-    )

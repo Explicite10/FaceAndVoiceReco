@@ -20,12 +20,41 @@ def _collect_diff(out: jiwer.WordOutput) -> tuple[list[str], list[str]]:
     return missing, extra
 
 
+def _score(expected_norm: str, heard_norm: str) -> tuple[float, jiwer.WordOutput, float, float]:
+    out = jiwer.process_words(expected_norm, heard_norm)
+    wer_score = max(0.0, 1.0 - out.wer) * 100.0
+    fuzzy_ratio = fuzz.ratio(expected_norm, heard_norm)
+    weight = settings.wer_weight
+    return weight * wer_score + (1.0 - weight) * fuzzy_ratio, out, wer_score, fuzzy_ratio
+
+
+def _best_window(expected_norm: str, heard_words: list[str]) -> tuple[int, int]:
+    """El tramo seguido de lo escuchado que mas se parece a la frase.
+
+    Solo recorta palabras de mas al principio y al final ("ya empezo?",
+    "listo"): lo que hay en medio de la frase se califica completo.
+    """
+    n = len(expected_norm.split())
+    total = len(heard_words)
+    if total <= n:
+        return 0, total
+    best, best_score = (0, total), _score(expected_norm, " ".join(heard_words))[0]
+    holgura = max(2, n // 4)
+    for i in range(total):
+        for j in range(max(i + 1, i + n - holgura), min(total, i + n + holgura) + 1):
+            score = _score(expected_norm, " ".join(heard_words[i:j]))[0]
+            if score > best_score + 1e-9:
+                best, best_score = (i, j), score
+    return best
+
+
 def score_phrase(expected: str, heard: str) -> dict:
     """Compara lo transcrito contra la frase esperada.
 
     Combina WER (nivel palabra, sensible al orden) con ratio de Levenshtein
     (nivel caracter). Se evita token_set_ratio a proposito: ignora el orden,
-    asi que daria 100% a alguien que dijera las palabras revueltas.
+    asi que daria 100% a alguien que dijera las palabras revueltas. Las
+    palabras de mas antes o despues de la frase no cuentan (ignored_words).
     """
     expected_norm = normalize_phrase(expected)
     heard_norm = normalize_phrase(heard)
@@ -40,14 +69,14 @@ def score_phrase(expected: str, heard: str) -> dict:
             "heard_normalized": "",
             "missing_words": expected_norm.split(),
             "extra_words": [],
+            "ignored_words": [],
         }
 
-    out = jiwer.process_words(expected_norm, heard_norm)
-    wer_score = max(0.0, 1.0 - out.wer) * 100.0
-    fuzzy_ratio = fuzz.ratio(expected_norm, heard_norm)
-
-    weight = settings.wer_weight
-    match_percent = weight * wer_score + (1.0 - weight) * fuzzy_ratio
+    words = heard_norm.split()
+    i, j = _best_window(expected_norm, words)
+    ignored = words[:i] + words[j:]
+    heard_norm = " ".join(words[i:j])
+    match_percent, out, wer_score, fuzzy_ratio = _score(expected_norm, heard_norm)
     missing, extra = _collect_diff(out)
 
     return {
@@ -59,4 +88,5 @@ def score_phrase(expected: str, heard: str) -> dict:
         "heard_normalized": heard_norm,
         "missing_words": missing,
         "extra_words": extra,
+        "ignored_words": ignored,
     }

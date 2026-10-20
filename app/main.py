@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.api.routes.identity import router as identity_router
@@ -32,6 +33,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+# Detector de gestos del navegador (Web Worker): asi no traba la vista de la camara.
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 if settings.cors_origins:
     app.add_middleware(

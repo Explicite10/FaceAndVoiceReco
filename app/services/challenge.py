@@ -57,11 +57,12 @@ def _purge(now: float) -> None:
         del _pending[cid]
 
 
-def create_challenge(client: str | None) -> dict:
+def create_challenge(client: str | None, phrase: str | None = None) -> dict:
+    """Reto nuevo. `phrase` la fija quien llama (p. ej. el proyecto de una sesion); si no, se sortea."""
     now = time.time()
     challenge = {
         "challenge_id": secrets.token_urlsafe(24),
-        "phrase": _random_phrase(),
+        "phrase": phrase or _random_phrase(),
         "gestures": _random_gestures(),
         "expires_at": now + settings.challenge_ttl_sec,
         "client": client,
@@ -84,3 +85,9 @@ def consume_challenge(challenge_id: str, client: str | None) -> dict:
     if challenge["expires_at"] <= time.time():
         raise CheckError(400, "challenge_expired", "El reto expiró. Pide uno nuevo.")
     return challenge
+
+
+def discard_challenge(challenge_id: str) -> None:
+    """Invalida un reto que ya no se va a usar (por ejemplo, al pedir otro)."""
+    with _lock:
+        _pending.pop(challenge_id, None)

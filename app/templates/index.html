@@ -3,166 +3,131 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Verificación de identidad · Demo</title>
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="robots" content="noindex" />
+    <title>Verificación de identidad</title>
+    <meta name="theme-color" content="#072146" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg: #f5f6fb; --surface: #ffffff; --surface-2: #f1f3f9; --border: #e3e6ef;
-        --text: #0f172a; --muted: #64748b; --faint: #94a3b8;
-        --primary: #4f46e5; --primary-strong: #4338ca; --primary-soft: #eef0ff; --on-primary: #fff;
-        --success: #15803d; --success-soft: #e8f7ee; --danger: #c81e1e; --danger-soft: #fdecec;
-        --warning: #b45309; --warning-soft: #fff6e5;
-        --stage: #0b1020; --shadow: 0 1px 2px rgba(15,23,42,.05), 0 8px 24px -12px rgba(15,23,42,.12);
-        --radius: 16px; --radius-sm: 10px;
+        --navy: #072146; --blue: #004481; --blue-mid: #1973b8; --blue-light: #5bbeff; --aqua: #2dcccd;
+        --tint: #e9f4fc; --tint-2: #d4edfc;
+        --bg: #f4f4f4; --surface: #ffffff; --surface-2: #f7f8fa; --border: #e1e5ea;
+        --text: #121212; --muted: #5d6b79; --faint: #9aa6b2;
+        --success: #388d4f; --success-bg: #e7f5eb; --success-solid: #48ae64;
+        --danger: #b92a45; --danger-bg: #fbe9ec; --danger-solid: #da3851;
+        --warning: #a8530f; --warning-bg: #fff3e8;
+        --stage: #061833;
+        --shadow: 0 1px 2px rgba(7,33,70,.06), 0 10px 28px -14px rgba(7,33,70,.22);
+        --radius: 14px;
         color-scheme: light;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0a0e1a; --surface: #111827; --surface-2: #172033; --border: #243049;
-          --text: #e7eaf3; --muted: #9aa6bd; --faint: #6b7891;
-          --primary: #818cf8; --primary-strong: #a5b4fc; --primary-soft: #1e2246; --on-primary: #0a0e1a;
-          --success: #4ade80; --success-soft: #0f2a1b; --danger: #f87171; --danger-soft: #2f1416;
-          --warning: #fbbf24; --warning-soft: #2c2210;
-          --stage: #05070d; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -12px rgba(0,0,0,.6);
-          color-scheme: dark;
-        }
       }
 
       *, *::before, *::after { box-sizing: border-box; }
       html { -webkit-text-size-adjust: 100%; }
       body {
         margin: 0; background: var(--bg); color: var(--text);
-        font: 15px/1.55 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font: 15px/1.55 "Libre Franklin", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         -webkit-font-smoothing: antialiased;
       }
+      body.bloqueado { overflow: hidden; }
       [hidden] { display: none !important; }
-      code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      .container { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
+      .container { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
       @media (min-width: 720px) { .container { padding: 0 28px; } }
+      svg { flex: none; }
 
       /* ---------- Encabezado ---------- */
-      .topbar {
-        position: sticky; top: 0; z-index: 20; backdrop-filter: saturate(1.4) blur(10px);
-        background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom: 1px solid var(--border);
-      }
-      .topbar .container { display: flex; align-items: center; gap: 12px; height: 64px; }
+      .topbar { background: var(--navy); color: #fff; }
+      .topbar .container { display: flex; align-items: center; gap: 12px; height: 60px; }
       .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; min-width: 0; }
       .brand-mark {
-        width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none;
-        background: linear-gradient(135deg, var(--primary), #06b6d4); color: #fff;
+        width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center;
+        background: var(--blue-mid); color: #fff;
       }
       .brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .tag {
-        font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-        padding: 3px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary);
-      }
       .topbar .spacer { flex: 1; }
-      .link { color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14px; }
-      .link:hover { color: var(--text); }
-      @media (max-width: 560px) { .hide-sm { display: none !important; } }
+      .secure { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: #cfe3f5; white-space: nowrap; }
+      .secure svg { color: var(--aqua); }
+      @media (max-width: 420px) { .secure span { display: none; } }
 
-      .settings { position: relative; }
-      .settings > summary {
-        list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
-        padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
-        font-size: 14px; font-weight: 500; color: var(--text);
-      }
-      .settings > summary::-webkit-details-marker { display: none; }
-      .settings[open] > summary { border-color: var(--primary); }
-      .settings-panel {
-        position: absolute; right: 0; top: calc(100% + 8px); width: min(360px, calc(100vw - 32px));
-        background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-        padding: 16px; box-shadow: var(--shadow);
-      }
-      .settings-panel p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
-
-      /* ---------- Hero ---------- */
-      .hero { padding: 28px 0 8px; }
-      .hero h1 { font-size: clamp(24px, 3.4vw, 34px); line-height: 1.15; letter-spacing: -.025em; margin: 0 0 8px; }
-      .hero p { margin: 0; color: var(--muted); max-width: 720px; }
-      .features { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+      .hero { background: linear-gradient(135deg, var(--navy) 0%, var(--blue) 100%); color: #fff; }
+      .hero .container { padding-top: 30px; padding-bottom: 76px; }
+      .eyebrow { margin: 0 0 6px; color: var(--blue-light); font-weight: 700; font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; }
+      .hero h1 { font-size: clamp(24px, 3.6vw, 36px); line-height: 1.15; letter-spacing: -.02em; margin: 0 0 10px; font-weight: 700; }
+      .hero p.lead { margin: 0; color: #d3e3f3; max-width: 680px; }
+      .features { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
       .feature {
-        display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;
-        padding: 6px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+        display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500;
+        padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); color: #fff;
       }
-      .feature svg { color: var(--primary); }
+      .feature svg { color: var(--aqua); }
 
       /* ---------- Pestañas ---------- */
+      .tabs-wrap { margin-top: -52px; }
       .tabs {
-        display: inline-flex; padding: 4px; gap: 4px; margin: 22px 0 18px; border-radius: 12px;
-        background: var(--surface-2); border: 1px solid var(--border); max-width: 100%;
+        display: inline-flex; padding: 4px; gap: 4px; border-radius: 12px; max-width: 100%;
+        background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
       }
       .tab {
-        appearance: none; border: 0; background: transparent; color: var(--muted); cursor: pointer;
-        font: inherit; font-weight: 600; font-size: 14px; padding: 9px 16px; border-radius: 9px;
+        appearance: none; border: 0; background: transparent; color: #dbe9f6; cursor: pointer;
+        font: inherit; font-weight: 600; font-size: 14px; padding: 10px 18px; border-radius: 9px;
         display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
       }
-      .tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
-      @media (max-width: 480px) { .tabs { display: flex; } .tab { flex: 1; justify-content: center; padding: 9px 8px; } }
+      .tab[aria-selected="true"] { background: #fff; color: var(--blue); }
+      @media (max-width: 480px) { .tabs { display: flex; } .tab { flex: 1; justify-content: center; padding: 10px 8px; } }
 
       /* ---------- Layout ---------- */
-      .workspace { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); padding-bottom: 40px; }
-      @media (min-width: 1000px) {
-        .workspace { grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 24px; align-items: start; }
-      }
-      .result-col { scroll-margin-top: 80px; }
+      .workspace { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); padding: 18px 0 40px; }
+      @media (min-width: 1000px) { .workspace { grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 24px; align-items: start; } }
       .stack { display: grid; gap: 16px; min-width: 0; }
+      .result-col { scroll-margin-top: 16px; min-width: 0; }
 
-      .card {
-        background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-        box-shadow: var(--shadow); min-width: 0;
-      }
+      .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0; }
       .step { padding: 18px; }
       @media (min-width: 720px) { .step { padding: 22px; } }
       .step-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
       .step-num {
-        width: 30px; height: 30px; border-radius: 999px; flex: none; display: grid; place-items: center;
-        font-weight: 700; font-size: 14px; background: var(--primary-soft); color: var(--primary);
-        transition: background .2s, color .2s;
+        width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center;
+        font-weight: 700; font-size: 14px; background: var(--tint); color: var(--blue); transition: background .2s, color .2s;
       }
-      .step.is-done .step-num { background: var(--success); color: #fff; }
+      .step.is-done .step-num { background: var(--success-solid); color: #fff; }
       .step.is-done .step-num span { display: none; }
       .step:not(.is-done) .step-num svg { display: none; }
-      .step-head h2 { font-size: 16px; margin: 3px 0 2px; letter-spacing: -.01em; }
+      .step-head h2 { font-size: 16.5px; margin: 3px 0 2px; color: var(--navy); }
       .step-head p { margin: 0; color: var(--muted); font-size: 13.5px; }
 
       /* ---------- Formularios ---------- */
       .field { display: grid; gap: 6px; }
-      .field label, .label { font-size: 13px; font-weight: 600; }
+      .field label { font-size: 13px; font-weight: 600; color: var(--navy); }
       .input {
         width: 100%; font: inherit; font-size: 14px; color: var(--text); background: var(--surface);
-        border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; outline: none;
+        border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; outline: none;
       }
-      .input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
-      .input-suffix { position: relative; max-width: 160px; }
+      .input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(25,115,184,.18); }
+      .input-suffix { position: relative; max-width: 150px; }
       .input-suffix .input { padding-right: 32px; }
       .input-suffix::after { content: "%"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
 
       .dropzone {
         position: relative; display: flex; align-items: center; gap: 14px; cursor: pointer;
-        padding: 18px; border: 1.5px dashed var(--border); border-radius: 14px; background: var(--surface-2);
+        padding: 18px; border: 1.5px dashed #b9c7d6; border-radius: 12px; background: var(--surface-2);
         transition: border-color .15s, background .15s;
       }
-      .dropzone:hover, .dropzone.is-drag { border-color: var(--primary); background: var(--primary-soft); }
-      .dropzone:focus-within { border-color: var(--primary); }
+      .dropzone:hover, .dropzone.is-drag, .dropzone:focus-within { border-color: var(--blue-mid); background: var(--tint); }
       .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
-      .dropzone .dz-icon {
-        width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none;
-        background: var(--surface); color: var(--primary); border: 1px solid var(--border);
+      .dz-icon {
+        width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center;
+        background: var(--surface); color: var(--blue-mid); border: 1px solid var(--border);
       }
-      .dropzone b { display: block; font-size: 14px; }
+      .dropzone b { display: block; font-size: 14px; color: var(--navy); }
       .dropzone small { color: var(--muted); font-size: 12.5px; }
-      .dropzone.compact { padding: 12px 14px; }
-      .dropzone.compact .dz-icon { width: 34px; height: 34px; border-radius: 10px; }
 
       .preview {
         display: flex; align-items: center; gap: 12px; margin: 12px 0 0; padding: 10px;
-        border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+        border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
       }
-      .preview img { width: 112px; height: 76px; object-fit: cover; border-radius: 8px; flex: none; background: var(--surface-2); }
+      .preview img { width: 112px; height: 76px; object-fit: cover; border-radius: 6px; flex: none; background: var(--surface-2); }
       .preview.tall img { width: 96px; height: 120px; }
       .preview figcaption { min-width: 0; font-size: 13px; }
       .preview figcaption b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -171,190 +136,196 @@
       /* ---------- Botones ---------- */
       .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
       .btn {
-        appearance: none; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+        appearance: none; font: inherit; font-weight: 600; font-size: 14.5px; cursor: pointer;
         display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-        padding: 11px 18px; border-radius: 11px; border: 1px solid var(--border);
-        background: var(--surface); color: var(--text); transition: transform .05s, background .15s, border-color .15s;
+        padding: 12px 20px; border-radius: 8px; border: 1px solid var(--blue-mid);
+        background: var(--surface); color: var(--blue-mid); transition: background .15s, border-color .15s, color .15s;
       }
-      .btn:hover:not(:disabled) { border-color: var(--faint); }
-      .btn:active:not(:disabled) { transform: translateY(1px); }
-      .btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent); outline-offset: 2px; }
+      .btn:hover:not(:disabled) { background: var(--tint); }
+      .btn:focus-visible { outline: 3px solid rgba(25,115,184,.35); outline-offset: 2px; }
       .btn:disabled { opacity: .45; cursor: not-allowed; }
-      .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
-      .btn-primary:hover:not(:disabled) { background: var(--primary-strong); border-color: var(--primary-strong); }
-      .btn-rec { background: #e11d48; border-color: #e11d48; color: #fff; }
-      .btn-rec:hover:not(:disabled) { background: #be123c; border-color: #be123c; }
-      .btn-block { width: 100%; padding: 13px 18px; font-size: 15px; }
+      .btn-primary { background: var(--blue-mid); color: #fff; }
+      .btn-primary:hover:not(:disabled) { background: var(--blue); border-color: var(--blue); }
+      .btn-block { width: 100%; padding: 14px 20px; font-size: 15px; }
       @media (max-width: 480px) { .actions .btn { flex: 1; } }
 
       .hint { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
-      .warn:empty { display: none; }
-      .warn {
-        margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; font-size: 13px;
-        background: var(--warning-soft); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
+      .note:empty { display: none; }
+      .note {
+        margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 13.5px;
+        background: var(--warning-bg); color: var(--warning); border: 1px solid #f6d3b4;
       }
-      .divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 12px; color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+      .divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 12px; color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
       .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-
-      .status-line { display: inline-flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 13px; color: var(--muted); }
-      .status-line::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--warning); flex: none; }
-      .status-line[data-state="ready"]::before { background: var(--success); }
-      .status-line[data-state="error"]::before { background: var(--danger); }
-      .status-line[data-state="loading"]::before { animation: pulse 1.2s infinite; }
 
       /* ---------- Cámara ---------- */
       .stage {
-        position: relative; aspect-ratio: 4 / 3; background: var(--stage); border-radius: 14px; overflow: hidden;
-        isolation: isolate;
+        --cam-ratio: 1.3333; position: relative; aspect-ratio: var(--cam-ratio); max-height: 70vh; margin: 0 auto;
+        background: var(--stage); border-radius: 12px; overflow: hidden; isolation: isolate;
       }
       .stage video { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--stage); }
-      .stage.is-live video { object-fit: cover; }
-      /* Solo el preview en vivo va en espejo; los cuadros grabados no. */
+      /* Solo la vista en vivo va en espejo; la grabacion se reproduce tal cual. */
       video.mirror { transform: scaleX(-1); }
-      .guide { position: absolute; inset: 0; pointer-events: none; display: none; overflow: hidden; }
+      .placeholder {
+        position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px;
+        color: #a9c3dd; text-align: center; padding: 16px; font-size: 14px;
+      }
+      .placeholder .ph-icon { width: 56px; height: 56px; border-radius: 999px; display: grid; place-items: center; background: rgba(91,190,255,.12); color: var(--blue-light); }
+      .guide { position: absolute; inset: 0; pointer-events: none; overflow: hidden; display: none; }
+      .stage.encuadre .guide { display: block; }
       .guide::after {
-        content: ""; position: absolute; left: 50%; top: 47%; width: 44%; height: 76%; transform: translate(-50%, -50%);
-        border: 2px dashed rgba(255,255,255,.6); border-radius: 50%; box-shadow: 0 0 0 9999px rgba(5,7,13,.32);
+        content: ""; position: absolute; left: 50%; top: 47%; height: 76%; aspect-ratio: 3 / 4; transform: translate(-50%, -50%);
+        border: 2px dashed rgba(255,255,255,.65); border-radius: 50%; box-shadow: 0 0 0 9999px rgba(6,24,51,.35);
+        transition: border-color .2s;
       }
-      .stage.is-live .guide { display: block; }
-      .stage-chip {
-        position: absolute; top: 12px; left: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 8px;
-        padding: 6px 10px; border-radius: 999px; background: rgba(5,7,13,.62); color: #fff;
-        font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; backdrop-filter: blur(6px);
+      .stage.encuadre.con-rostro .guide::after { border-style: solid; border-color: var(--aqua); }
+      .chip {
+        position: absolute; top: 12px; left: 12px; z-index: 3; display: inline-flex; align-items: center; gap: 8px;
+        padding: 6px 11px; border-radius: 999px; background: rgba(6,24,51,.7); color: #fff;
+        font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums;
       }
-      .rec { display: inline-flex; align-items: center; gap: 6px; color: #fda4af; font-size: 12px; letter-spacing: .08em; }
-      .rec::before { content: ""; width: 9px; height: 9px; border-radius: 999px; background: #f43f5e; animation: pulse 1s infinite; }
-      .prompt {
-        position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 2; padding: 12px 16px;
-        border-radius: 12px; background: rgba(5,7,13,.72); color: #fff; backdrop-filter: blur(8px);
-        font-size: clamp(16px, 2.6vw, 20px); font-weight: 700; text-align: center; letter-spacing: -.01em;
+      .chip .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--danger-solid); animation: pulse 1s infinite; }
+      .countdown-big {
+        position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; color: #fff;
+        font-size: clamp(64px, 14vw, 120px); font-weight: 800; text-shadow: 0 6px 30px rgba(0,0,0,.45);
       }
+      .countdown-big.tic { animation: tic .9s ease-out; }
+      .burst {
+        position: absolute; left: 50%; top: 50%; z-index: 4; width: 92px; height: 92px; margin: -46px 0 0 -46px;
+        border-radius: 999px; display: grid; place-items: center; background: var(--success-solid); color: #fff;
+        animation: burst .7s ease-out forwards;
+      }
+      .burst svg { width: 50px; height: 50px; }
       @keyframes pulse { 50% { opacity: .35; } }
+      @keyframes tic { from { transform: scale(1.5); opacity: 0; } 30% { opacity: 1; } to { transform: scale(1); opacity: .9; } }
+      @keyframes burst { from { transform: scale(.5); opacity: 0; } 30% { transform: scale(1.08); opacity: 1; } to { transform: scale(1); opacity: 0; } }
 
-      .steps { list-style: none; counter-reset: g; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
-      .steps:empty { display: none; }
-      .steps li {
-        counter-increment: g; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-        border-radius: 11px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-size: 14px;
+      .capture-panel { margin-top: 14px; display: grid; gap: 12px; }
+      .progress-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .step-count { margin: 0; font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--blue-mid); }
+      .progress { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+      .progress:empty { display: none; }
+      .progress li {
+        display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border-radius: 8px;
+        background: var(--surface-2); border: 1px solid var(--border); color: var(--faint); font-size: 12px; font-weight: 600; text-align: center;
       }
-      .steps li::before {
-        content: counter(g); width: 24px; height: 24px; border-radius: 999px; flex: none; display: grid; place-items: center;
-        font-size: 12px; font-weight: 700; background: var(--surface); border: 1px solid var(--border);
-      }
-      .steps li.current { color: var(--text); font-weight: 600; border-color: var(--primary); background: var(--primary-soft); }
-      .steps li.current::before { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
-      .steps li.done { color: var(--success); }
-      .steps li.done::before { content: "✓"; background: var(--success); border-color: var(--success); color: #fff; }
+      .progress li svg { width: 20px; height: 20px; }
+      .progress li.current { color: var(--blue); border-color: var(--blue-mid); background: var(--tint); }
+      .progress li.done { color: var(--success); border-color: #bfe3c9; background: var(--success-bg); }
 
-      .phrase {
-        margin: 12px 0 0; padding: 14px 16px; border-radius: 12px; font-size: clamp(17px, 2.4vw, 20px);
-        line-height: 1.5; font-weight: 600; background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+      .step-card { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 10px; background: var(--tint); border: 1px solid var(--tint-2); }
+      .step-icon { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; background: #fff; color: var(--blue-mid); flex: none; }
+      .step-icon svg { width: 26px; height: 26px; }
+      .step-icon.go { animation: tic .5s ease-out; }
+      .step-text { margin: 0; font-weight: 700; font-size: clamp(16px, 2.2vw, 18px); color: var(--navy); }
+      .step-card .hint { margin: 2px 0 0; }
+      .step-card .hint:empty { display: none; }
+
+      .phrase-card { padding: 14px 16px; border-radius: 10px; background: var(--navy); color: #fff; }
+      .phrase-label { margin: 0 0 4px; font-size: 11.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--aqua); }
+      .phrase { margin: 0; font-size: clamp(18px, 2.6vw, 22px); line-height: 1.45; font-weight: 600; }
+      .phrase.larga { font-size: 16px; }
+      .countdown { height: 4px; margin-top: 12px; border-radius: 999px; background: rgba(255,255,255,.15); overflow: hidden; }
+      .countdown span { display: block; height: 100%; background: var(--aqua); transform-origin: left; }
+
+      /* ---------- Cargador global ---------- */
+      .overlay {
+        position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px;
+        background: rgba(7,33,70,.55); backdrop-filter: blur(3px);
       }
-      .phrase::before {
-        content: "Lee en voz alta"; display: block; margin-bottom: 4px; font-size: 11px; font-weight: 700;
-        letter-spacing: .08em; text-transform: uppercase; color: var(--primary);
+      .overlay-card {
+        width: min(360px, 100%); background: #fff; border-radius: 16px; padding: 28px 24px; text-align: center;
+        box-shadow: 0 20px 60px -20px rgba(7,33,70,.6);
       }
+      .overlay-title { margin: 14px 0 4px; font-weight: 700; font-size: 17px; color: var(--navy); }
+      .overlay-text { margin: 0; color: var(--muted); font-size: 14px; }
+      .overlay-text:empty { display: none; }
+      .spinner {
+        width: 46px; height: 46px; margin: 0 auto; border-radius: 999px;
+        border: 4px solid var(--tint-2); border-top-color: var(--blue-mid); animation: spin .8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
 
       /* ---------- Resultados ---------- */
       .result-card { padding: 18px; }
       @media (min-width: 720px) { .result-card { padding: 22px; } }
-      .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-      .result-head h2 { font-size: 16px; margin: 0; }
-      .result-head span { color: var(--muted); font-size: 13px; }
+      .result-head { margin-bottom: 14px; }
+      .result-head h2 { font-size: 16.5px; margin: 0; color: var(--navy); }
 
       .empty { text-align: center; padding: 36px 12px; color: var(--muted); }
-      .empty-icon {
-        width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 16px; display: grid; place-items: center;
-        background: var(--surface-2); color: var(--faint);
-      }
-      .empty b { display: block; color: var(--text); margin-bottom: 4px; }
+      .empty-icon { width: 60px; height: 60px; margin: 0 auto 12px; border-radius: 999px; display: grid; place-items: center; background: var(--tint); color: var(--blue-mid); }
+      .empty b { display: block; color: var(--navy); margin-bottom: 4px; }
       .empty p { margin: 0; font-size: 14px; }
 
-      .loading { display: flex; gap: 14px; align-items: center; padding: 22px 4px; }
-      .loading b { display: block; }
-      .loading p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
-      .spinner {
-        width: 34px; height: 34px; border-radius: 999px; flex: none;
-        border: 3px solid var(--primary-soft); border-top-color: var(--primary); animation: spin .8s linear infinite;
-      }
-      @keyframes spin { to { transform: rotate(360deg); } }
-
-      .verdict {
-        display: flex; gap: 14px; align-items: flex-start; padding: 16px; border-radius: 14px;
-        border: 1px solid transparent;
-      }
-      .verdict-icon { width: 44px; height: 44px; border-radius: 999px; flex: none; display: grid; place-items: center; color: #fff; }
-      .verdict h3 { margin: 2px 0 4px; font-size: 19px; letter-spacing: -.015em; }
+      .verdict { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border-radius: 12px; border: 1px solid transparent; }
+      .verdict-icon { width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; color: #fff; flex: none; }
+      .verdict h3 { margin: 2px 0 4px; font-size: 19px; letter-spacing: -.01em; }
       .verdict p { margin: 0; font-size: 14px; }
       .verdict .meta { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
-      .verdict--approved { background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 30%, transparent); }
-      .verdict--approved .verdict-icon { background: var(--success); }
-      .verdict--approved h3 { color: var(--success); }
-      .verdict--rejected, .verdict--error { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
-      .verdict--rejected .verdict-icon, .verdict--error .verdict-icon { background: var(--danger); }
-      .verdict--rejected h3, .verdict--error h3 { color: var(--danger); }
-      .codes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-      .code-chip {
-        font: 11.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 5px 8px; border-radius: 6px;
-        background: var(--surface); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
-      }
+      .verdict ul { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+      .verdict ul li { margin: 3px 0; }
+      .verdict--ok { background: var(--success-bg); border-color: #bfe3c9; }
+      .verdict--ok .verdict-icon { background: var(--success-solid); }
+      .verdict--ok h3 { color: var(--success); }
+      .verdict--bad { background: var(--danger-bg); border-color: #f2c4cd; }
+      .verdict--bad .verdict-icon { background: var(--danger-solid); }
+      .verdict--bad h3 { color: var(--danger); }
 
       .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
       @media (min-width: 560px) { .tiles.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } .tiles.three { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
       @media (min-width: 1000px) and (max-width: 1180px) { .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
       @media (max-width: 559px) { .tiles.three .tile:last-child { grid-column: 1 / -1; } }
-      .tile { padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); min-width: 0; }
+      .tile { padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); min-width: 0; }
       .tile small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
-      .tile small::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: var(--faint); }
-      .tile.passed small::before { background: var(--success); }
-      .tile.failed small::before { background: var(--danger); }
-      .tile strong { display: block; font-size: 22px; letter-spacing: -.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+      .tile small::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--faint); flex: none; }
+      .tile.passed small::before { background: var(--success-solid); }
+      .tile.failed small::before { background: var(--danger-solid); }
+      .tile strong { display: block; font-size: 22px; margin-top: 2px; color: var(--navy); font-variant-numeric: tabular-nums; }
 
-      .panel { border: 1px solid var(--border); border-radius: 12px; margin-top: 10px; background: var(--surface); }
+      .panel { border: 1px solid var(--border); border-radius: 10px; margin-top: 10px; background: var(--surface); }
       .panel > summary {
-        list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px;
-        padding: 13px 14px; font-weight: 600; font-size: 14.5px;
+        list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px;
+        padding: 13px 14px; font-weight: 600; font-size: 14.5px; color: var(--navy);
       }
       .panel > summary::-webkit-details-marker { display: none; }
       .panel-title { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-      .panel-title svg { color: var(--primary); flex: none; }
+      .panel-title svg { color: var(--blue-mid); }
+      .panel > summary .pill { margin-left: auto; }
       .panel > summary::after {
         content: ""; width: 8px; height: 8px; flex: none; margin-left: 4px; border-right: 2px solid var(--faint);
         border-bottom: 2px solid var(--faint); transform: rotate(45deg) translateY(-2px); transition: transform .15s;
       }
       .panel[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
-      .panel > summary .pill { margin-left: auto; }
       .panel-body { padding: 0 14px 14px; }
       .pill { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
-      .pill--passed { background: var(--success-soft); color: var(--success); }
-      .pill--failed { background: var(--danger-soft); color: var(--danger); }
+      .pill--passed { background: var(--success-bg); color: var(--success); }
+      .pill--failed { background: var(--danger-bg); color: var(--danger); }
       .pill--not_evaluated { background: var(--surface-2); color: var(--muted); }
 
-      .checks { list-style: none; padding: 0; margin: 0 0 4px; display: grid; gap: 2px; }
+      .checks { list-style: none; padding: 0; margin: 0 0 4px; }
       .checks li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 13.5px; border-bottom: 1px dashed var(--border); }
       .checks li:last-child { border-bottom: 0; }
-      .checks .ic { width: 20px; height: 20px; border-radius: 999px; flex: none; display: grid; place-items: center; margin-top: 1px; color: #fff; }
-      .checks .passed .ic { background: var(--success); }
-      .checks .failed .ic { background: var(--danger); }
+      .checks .ic { width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; margin-top: 1px; color: #fff; flex: none; }
+      .checks .passed .ic { background: var(--success-solid); }
+      .checks .failed .ic { background: var(--danger-solid); }
       .checks .not_evaluated { color: var(--muted); }
       .checks .not_evaluated .ic { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
-      .checks code { color: var(--danger); margin-left: 4px; }
 
       .sub { margin: 14px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-      .big { font-size: 30px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-      .big small { font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+      .big { font-size: 30px; font-weight: 800; color: var(--navy); font-variant-numeric: tabular-nums; }
+      .big small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 6px; }
       .ok { color: var(--success); } .bad { color: var(--danger); }
 
-      .meter { display: grid; gap: 6px; }
-      .meter-row { display: grid; grid-template-columns: minmax(84px, 120px) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; }
+      .meter { display: grid; gap: 7px; }
+      .meter-row { display: grid; grid-template-columns: minmax(96px, 140px) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; }
       .meter-row > span:first-child { color: var(--muted); }
-      .meter-row > b { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
-      .bar { position: relative; height: 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
-      .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--primary); }
-      .bar-fill.ok { background: var(--success); } .bar-fill.bad { background: var(--danger); }
-      .bar-thr { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); opacity: .55; border-radius: 2px; }
+      .meter-row > b { font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; }
+      .bar { position: relative; height: 8px; border-radius: 999px; background: #e8edf2; }
+      .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--blue-mid); }
+      .bar-fill.ok { background: var(--success-solid); } .bar-fill.bad { background: var(--danger-solid); }
+      .bar-thr { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--navy); opacity: .6; border-radius: 2px; }
 
-      .kv { margin: 0; display: grid; gap: 0; font-size: 13.5px; }
+      .kv { margin: 0; font-size: 13.5px; }
       .kv > div { display: grid; grid-template-columns: minmax(110px, 38%) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
       .kv > div:last-child { border-bottom: 0; }
       .kv dt { color: var(--muted); }
@@ -363,27 +334,17 @@
 
       .compare { display: grid; gap: 8px; }
       @media (min-width: 560px) { .compare { grid-template-columns: 1fr 1fr; } }
-      .quote { padding: 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-size: 14px; }
+      .quote { padding: 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); font-size: 14px; }
       .quote small { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
       .words { display: flex; flex-wrap: wrap; gap: 4px; }
-      .word { font-size: 12px; padding: 2px 7px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+      .word { font-size: 12.5px; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
       .none { color: var(--muted); }
 
       .timeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
-      .timeline li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; }
-      .timeline li b { font-weight: 600; }
+      .timeline li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13.5px; }
 
-      .json { margin-top: 12px; }
-      .json summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 600; }
-      pre {
-        white-space: pre-wrap; word-break: break-word; margin: 10px 0 0; padding: 12px; border-radius: 10px;
-        background: var(--surface-2); border: 1px solid var(--border); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        max-height: 420px; overflow: auto;
-      }
-
-      footer { border-top: 1px solid var(--border); padding: 20px 0 32px; color: var(--muted); font-size: 13px; }
-      footer .container { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; }
-      footer code { color: var(--text); }
+      footer { border-top: 1px solid var(--border); padding: 20px 0 32px; color: var(--muted); font-size: 13px; background: var(--surface); }
+      footer .container { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; align-items: center; }
 
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     </style>
@@ -398,48 +359,42 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
           </span>
           <span class="brand-name">Verificación de identidad</span>
-          <span class="tag">Demo</span>
         </div>
         <div class="spacer"></div>
-        <a class="link hide-sm" href="docs" target="_blank" rel="noopener">API docs</a>
-        <details class="settings">
-          <summary aria-label="Configuración">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>
-            <span class="hide-sm">API key</span>
-          </summary>
-          <div class="settings-panel">
-            <div class="field">
-              <label for="apiKey">X-API-Key</label>
-              <input class="input" type="password" id="apiKey" autocomplete="off" placeholder="Opcional" />
-            </div>
-            <p>Solo hace falta si el servidor tiene <code>API_KEYS</code> configurado. Se manda en cada solicitud.</p>
-          </div>
-        </details>
+        <div class="secure">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span>Verificación segura</span>
+        </div>
       </div>
     </header>
 
-    <main class="container">
-      <section class="hero">
-        <h1>Verifica a una persona contra su INE en segundos</h1>
-        <p>Compara el rostro con la identificación, confirma que es una persona real frente a la cámara
-          y valida un reto de gestos y una frase hablada, todo en una sola grabación.</p>
+    <section class="hero">
+      <div class="container">
+        <p class="eyebrow">Onboarding digital</p>
+        <h1>Confirma la identidad de tus clientes en segundos</h1>
+        <p class="lead">Comparamos el rostro con la INE y confirmamos que hay una persona real frente a la cámara,
+          con un reto de movimientos y una frase leída en voz alta.</p>
         <div class="features">
           <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>Rostro vs. INE</span>
-          <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>Frase hablada</span>
           <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Prueba de vida</span>
-          <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-2a2 2 0 0 0-4 0"/></svg>Reto de gestos</span>
+          <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-2a2 2 0 0 0-4 0"/></svg>Reto de movimientos</span>
+          <span class="feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>Frase hablada</span>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <div class="tabs" role="tablist" aria-label="Modo de verificación">
-        <button class="tab" role="tab" id="tabVideo" aria-controls="flowVideo" aria-selected="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
-          Video con reto
-        </button>
-        <button class="tab" role="tab" id="tabPhoto" aria-controls="flowPhoto" aria-selected="false">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
-          Foto vs. INE
-        </button>
+    <main class="container">
+      <div class="tabs-wrap">
+        <div class="tabs" role="tablist" aria-label="Modo de verificación">
+          <button class="tab" role="tab" id="tabVideo" aria-controls="flowVideo" aria-selected="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+            Video con prueba de vida
+          </button>
+          <button class="tab" role="tab" id="tabPhoto" aria-controls="flowPhoto" aria-selected="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+            Foto vs. INE
+          </button>
+        </div>
       </div>
 
       <!-- ================= Flujo 1: video con reto ================= -->
@@ -450,8 +405,8 @@
               <div class="step-head">
                 <div class="step-num"><span>1</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
                 <div>
-                  <h2>Sube la identificación</h2>
-                  <p>Foto clara del frente de la INE.</p>
+                  <h2>Identificación oficial</h2>
+                  <p>Sube una foto clara del frente de la INE.</p>
                 </div>
               </div>
               <label class="dropzone">
@@ -466,40 +421,62 @@
               <div class="step-head">
                 <div class="step-num"><span>2</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
                 <div>
-                  <h2>Graba el video siguiendo el reto</h2>
-                  <p>Al iniciar se pide un reto nuevo. Haz los gestos uno por uno y después lee la frase en voz alta,
-                    mirando a la cámara. Máximo {{ max_duration_sec }} s.</p>
+                  <h2>Prueba de vida</h2>
+                  <p>Tres movimientos sencillos y una frase en voz alta, en una sola grabación de menos de un minuto.</p>
                 </div>
               </div>
 
-              <div class="stage is-live" id="stage">
-                <video id="preview" class="mirror" autoplay muted playsinline></video>
+              <div class="stage" id="stage">
+                <video id="video" class="mirror" autoplay muted playsinline hidden></video>
+                <div class="placeholder" id="placeholder">
+                  <span class="ph-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></span>
+                  <span>La cámara se activa al iniciar.<br />Busca buena luz y un lugar sin ruido.</span>
+                </div>
                 <div class="guide" aria-hidden="true"></div>
-                <div class="stage-chip" id="timer">00.0 s</div>
-                <div class="prompt" id="prompt" hidden></div>
+                <div class="chip" id="rec" hidden><span class="dot"></span><span id="recTiempo">0:00</span></div>
+                <div class="countdown-big" id="cuentaAtras" hidden aria-live="assertive"></div>
+                <div class="burst" id="bien" hidden aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                </div>
               </div>
-              <ol class="steps" id="steps"></ol>
-              <div class="phrase" id="phrase" hidden></div>
 
-              <div class="actions" style="margin-top:14px">
-                <button class="btn btn-rec" id="btnRec">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>
-                  Iniciar reto y grabar
-                </button>
-                <button class="btn" id="btnStop" disabled>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
-                  Terminar
-                </button>
+              <div class="capture-panel">
+                <div class="progress-head" id="progresoHead" hidden>
+                  <p class="step-count" id="pasoN">Prepárate</p>
+                </div>
+                <ol class="progress" id="progreso" aria-label="Pasos"></ol>
+
+                <div class="step-card" id="pasoCard" aria-live="polite" hidden>
+                  <div class="step-icon" id="pasoIcono" aria-hidden="true"></div>
+                  <div>
+                    <p class="step-text" id="instruccion"></p>
+                    <p class="hint" id="pista"></p>
+                  </div>
+                </div>
+
+                <div class="phrase-card" id="fraseBox" hidden>
+                  <p class="phrase-label">Lee en voz alta</p>
+                  <p class="phrase" id="frase"></p>
+                  <div class="countdown" aria-hidden="true"><span id="cuenta"></span></div>
+                </div>
+
+                <div class="actions">
+                  <button class="btn btn-primary" id="btnIniciar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+                    Activar cámara
+                  </button>
+                  <button class="btn btn-primary" id="btnGrabar" hidden disabled>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+                    Empezar grabación
+                  </button>
+                  <button class="btn btn-primary" id="btnListo" hidden>Ya terminé de leer</button>
+                  <button class="btn" id="btnRepetir" hidden>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                    Grabar de nuevo
+                  </button>
+                </div>
+                <p class="note" id="aviso"></p>
               </div>
-              <p class="status-line" id="mpStatus" data-state="loading">Cargando detector de gestos...</p>
-
-              <div class="divider">o sube un video</div>
-              <label class="dropzone compact">
-                <input type="file" id="videoFile" accept="video/*" />
-                <span class="dz-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg></span>
-                <span><b>Video ya grabado</b><small>Sin reto solo funciona con <code>REQUIRE_CHALLENGE=false</code></small></span>
-              </label>
-              <p class="warn" id="warn"></p>
             </article>
 
             <article class="card step" id="stepSend">
@@ -507,7 +484,7 @@
                 <div class="step-num"><span>3</span></div>
                 <div>
                   <h2>Verificar</h2>
-                  <p>Se analizan rostro, gestos, voz y prueba de vida en una sola llamada.</p>
+                  <p>Se analizan rostro, movimientos, voz y prueba de vida.</p>
                 </div>
               </div>
               <div class="field" style="margin-bottom:14px">
@@ -518,13 +495,13 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
                 Verificar identidad
               </button>
-              <p class="hint" id="sendHint">Falta: identificacion y video.</p>
+              <p class="hint" id="sendHint">Falta: identificación y prueba de vida.</p>
             </article>
           </div>
 
           <aside class="result-col">
             <div class="card result-card">
-              <div class="result-head"><h2>Resultado</h2><span>POST /api/verify-identity</span></div>
+              <div class="result-head"><h2>Resultado</h2></div>
               <div id="result"></div>
             </div>
           </aside>
@@ -539,8 +516,8 @@
               <div class="step-head">
                 <div class="step-num"><span>1</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
                 <div>
-                  <h2>Sube la identificación</h2>
-                  <p>Foto clara del frente de la INE.</p>
+                  <h2>Identificación oficial</h2>
+                  <p>Sube una foto clara del frente de la INE.</p>
                 </div>
               </div>
               <label class="dropzone">
@@ -566,8 +543,8 @@
               </label>
 
               <div class="divider">o tómala con la cámara</div>
-              <div class="stage is-live" id="pCamWrap" hidden>
-                <video id="pCam" class="mirror" autoplay muted playsinline style="display:none"></video>
+              <div class="stage encuadre" id="pStage" hidden>
+                <video id="pCam" class="mirror" autoplay muted playsinline></video>
                 <div class="guide" aria-hidden="true"></div>
               </div>
               <div class="actions" style="margin-top:12px">
@@ -580,7 +557,7 @@
                   Tomar foto
                 </button>
               </div>
-              <p class="warn" id="pWarn"></p>
+              <p class="note" id="pAviso"></p>
               <div id="pPhotoPrevBox"></div>
             </article>
 
@@ -589,7 +566,7 @@
                 <div class="step-num"><span>3</span></div>
                 <div>
                   <h2>Verificar</h2>
-                  <p>Compara las caras, valida la calidad de la foto y revisa que sea una persona real.</p>
+                  <p>Compara los rostros, revisa la calidad de la foto y que sea una persona real.</p>
                 </div>
               </div>
               <div class="field" style="margin-bottom:14px">
@@ -600,13 +577,13 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
                 Comparar foto
               </button>
-              <p class="hint" id="pSendHint">Falta: identificacion y foto.</p>
+              <p class="hint" id="pSendHint">Falta: identificación y foto.</p>
             </article>
           </div>
 
           <aside class="result-col">
             <div class="card result-card">
-              <div class="result-head"><h2>Resultado</h2><span>POST /api/verify-photo</span></div>
+              <div class="result-head"><h2>Resultado</h2></div>
               <div id="pResult"></div>
             </div>
           </aside>
@@ -616,55 +593,120 @@
 
     <footer>
       <div class="container">
-        <span>Demo técnica · el resultado lo decide el servidor, no el navegador.</span>
-        <span><code>/api/challenge</code> · <code>/api/verify-identity</code> · <code>/api/verify-photo</code></span>
+        <span>Demostración de verificación de identidad con prueba de vida.</span>
+        <span>Las imágenes se usan solo para esta verificación.</span>
       </div>
     </footer>
 
+    <!-- Bloquea la pantalla mientras algo carga: no se puede tocar nada debajo. -->
+    <div class="overlay" id="cargador" role="status" aria-live="polite" hidden>
+      <div class="overlay-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="overlay-title" id="cargadorTitulo">Cargando</p>
+        <p class="overlay-text" id="cargadorTexto"></p>
+      </div>
+    </div>
+
     <script>
       const $ = (id) => document.getElementById(id);
-      const authHeaders = () => ($("apiKey").value ? { "X-API-Key": $("apiKey").value } : {});
       const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      const ds = document.body.dataset;
+      const MIN_DUR = Number(ds.min);
+      const MAX_DUR = Number(ds.max);
+      // Mismos umbrales que app/services/gestures.py.
+      const TH = {
+        turn: Number(ds.turn), closed: Number(ds.blinkClosed), open: Number(ds.blinkOpen),
+        turnFrames: 3, handFrames: 3, faceFrames: 5,
+      };
+      const esperarMs = (ms) => new Promise((r) => setTimeout(r, ms));
 
-      // ---------------- Presentacion (solo UI) ----------------
+      // ---------------------------------------------------------------- cargador global
+
+      // Cubre la pantalla y atrapa los toques hasta que se quite.
+      function cargando(titulo, texto = "") {
+        $("cargadorTitulo").textContent = titulo;
+        $("cargadorTexto").textContent = texto;
+        $("cargador").hidden = false;
+        document.body.classList.add("bloqueado");
+      }
+      function listo() {
+        $("cargador").hidden = true;
+        document.body.classList.remove("bloqueado");
+      }
+
+      // ---------------------------------------------------------------- utilidades de UI
+
       const SVG = (d, w = 12, sw = 3.2) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
       const I = {
         check: SVG('<path d="M20 6 9 17l-5-5"/>'),
         x: SVG('<path d="M18 6 6 18M6 6l12 12"/>'),
         minus: SVG('<path d="M5 12h14"/>'),
         checkBig: SVG('<path d="M20 6 9 17l-5-5"/>', 22, 3),
-        xBig: SVG('<path d="M18 6 6 18M6 6l12 12"/>', 22, 3),
+        alertBig: SVG('<path d="M12 7v6M12 17h.01"/>', 22, 3),
         face: SVG('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>', 16, 2),
         hand: SVG('<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-2a2 2 0 0 0-4 0"/>', 16, 2),
         mic: SVG('<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>', 16, 2),
         pulse: SVG('<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>', 16, 2),
         image: SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>', 16, 2),
-        shield: SVG('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>', 26, 1.8),
+        shield: SVG('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>', 28, 1.8),
       };
-      const STATUS_LABEL = { passed: "Correcto", failed: "Con fallas", not_evaluated: "Sin evaluar" };
-      const DECISION = { approved: "Identidad aprobada", rejected: "Identidad rechazada" };
+      const STATUS_LABEL = { passed: "Correcto", failed: "No pasó", not_evaluated: "Sin evaluar" };
+      // Por que no paso, en palabras del usuario (mismos codigos que el reporte del servidor).
+      const MOTIVOS = {
+        id_face_not_found: "No se encontró un rostro en la identificación. Usa una foto clara del frente de la INE.",
+        video_face_not_found: "No se vio el rostro en el video. Acércate a la cámara y busca buena luz.",
+        face_missing_in_segment: "El rostro no se vio durante todo el video. Mantente frente a la cámara.",
+        face_mismatch: "El rostro no coincide con la foto de la identificación.",
+        photo_face_not_found: "No se encontró un rostro en la foto.",
+        multiple_faces_detected: "Se detectó más de una persona. Debe haber una sola frente a la cámara.",
+        person_changed: "Debe ser la misma persona durante todo el video.",
+        audio_missing: "No se grabó el audio. Revisa el permiso del micrófono.",
+        audio_duration_invalid: "La grabación fue muy corta o muy larga.",
+        invalid_audio: "La grabación fue muy corta o muy larga.",
+        no_speech_detected: "No se escuchó la voz. Habla más fuerte y cerca del micrófono.",
+        speech_low_confidence: "No se entendió la voz. Busca un lugar sin ruido.",
+        phrase_mismatch: "La frase no coincide con la que se pidió. Hay que leerla completa y en voz clara.",
+        spoof_detected: "Parece una foto o una pantalla. Debe haber una persona real frente a la cámara.",
+        face_not_tracked: "El rostro salió de la imagen gran parte del tiempo.",
+        lips_not_moving: "No se vio movimiento de labios al hablar.",
+        lips_out_of_sync: "El movimiento de los labios no coincidió con la voz.",
+        head_turn_not_detected: "No se detectó el giro de cabeza.",
+        blink_not_detected: "No se detectó el parpadeo.",
+        hand_raise_not_detected: "No se detectó la mano alzada.",
+        gesture_order_mismatch: "Los movimientos no se hicieron en el orden indicado.",
+        face_too_small: "El rostro se ve muy pequeño en la foto. Acércate más.",
+        image_blurry: "La foto está borrosa.",
+        image_too_dark: "La foto está muy oscura.",
+        image_overexposed: "La foto tiene demasiada luz.",
+      };
+      const MOTIVO_GENERICO = "No fue posible confirmar la identidad. Intenta de nuevo con buena luz, de frente a la cámara.";
 
       const kb = (n) => n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
       const clamp = (x) => Math.max(0, Math.min(100, Number(x) || 0));
       const num = (x, d = 1) => (x == null || isNaN(x) ? "&mdash;" : `${Number(x).toFixed(d)}%`);
+      const pct = (x) => (x == null ? "&mdash;" : `${Math.round(x * 100)}%`);
 
       function previewCard(file, tall) {
         return `<figure class="preview${tall ? " tall" : ""}"><img alt="" src="${URL.createObjectURL(file)}">
           <figcaption><b>${esc(file.name)}</b><span>${kb(file.size)}</span></figcaption></figure>`;
       }
+      const emptyState = (text) =>
+        `<div class="empty"><div class="empty-icon">${I.shield}</div><b>Aún sin resultado</b><p>${text}</p></div>`;
 
-      function emptyState(text) {
-        return `<div class="empty"><div class="empty-icon">${I.shield}</div><b>Aún sin resultado</b><p>${text}</p></div>`;
+      function aviso(id, titulo, texto) {
+        return `<div class="verdict verdict--bad"><div class="verdict-icon">${I.alertBig}</div>
+          <div style="min-width:0"><h3>${esc(titulo)}</h3><p>${esc(texto)}</p></div></div>`;
       }
 
-      function loadingState(title, text) {
-        return `<div class="loading"><span class="spinner" aria-hidden="true"></span><div><b>${title}</b><p>${text}</p></div></div>`;
-      }
-
-      function errorState(title, body) {
-        return `<div class="verdict verdict--error"><div class="verdict-icon">${I.xBig}</div><div style="min-width:0">
-          <h3>${esc(title)}</h3><p>La solicitud no se pudo procesar.</p></div></div><pre>${esc(body)}</pre>`;
+      // Error de la solicitud, sin detalles tecnicos.
+      function errorAmigable(status) {
+        if (status === 400) return ["El reto ya no es válido", "Graba la prueba de vida de nuevo para intentar otra vez."];
+        if (status === 413) return ["Archivo demasiado grande", "Usa una imagen o un video más ligero."];
+        if (status === 415 || status === 422) return ["No pudimos leer el archivo", "Verifica que la imagen sea clara y esté en JPG, PNG o WEBP."];
+        if (status === 429) return ["Demasiados intentos", "Espera un momento antes de volver a intentar."];
+        if (status === 0) return ["Sin conexión", "Revisa tu conexión a internet e intenta de nuevo."];
+        return ["No pudimos completar la verificación", "Intenta de nuevo en un momento."];
       }
 
       function groupStatus(group) {
@@ -674,24 +716,32 @@
         return "not_evaluated";
       }
 
+      function motivos(d) {
+        const out = [];
+        Object.values(d.checks || {}).forEach((g) => Object.values(g).forEach((c) => {
+          const t = c.status === "failed" ? (MOTIVOS[c.code] || null) : null;
+          if (t && !out.includes(t)) out.push(t);
+        }));
+        return out.length ? out : [MOTIVO_GENERICO];
+      }
+
       function verdict(d) {
-        const r = d.result;
-        const codes = r.failed_checks.length
-          ? `<div class="codes">${r.failed_checks.map((x) => `<span class="code-chip">${esc(x)}</span>`).join("")}</div>` : "";
-        return `<div class="verdict verdict--${esc(r.decision)}">
-            <div class="verdict-icon">${r.approved ? I.checkBig : I.xBig}</div>
+        const ok = d.result.approved;
+        const cuerpo = ok
+          ? "<p>Todas las validaciones se cumplieron.</p>"
+          : `<ul>${motivos(d).map((m) => `<li>${esc(m)}</li>`).join("")}</ul>`;
+        return `<div class="verdict verdict--${ok ? "ok" : "bad"}">
+            <div class="verdict-icon">${ok ? I.checkBig : I.alertBig}</div>
             <div style="min-width:0">
-              <h3>${esc(DECISION[r.decision] || r.decision)}</h3>
-              <p>${esc(r.summary)}</p>${codes}
-              <div class="meta">${(d.processing_time_ms / 1000).toFixed(1)} s de análisis · solicitud ${esc(d.request_id.slice(0, 8))}</div>
+              <h3>${ok ? "Identidad verificada" : "No se pudo verificar la identidad"}</h3>
+              ${cuerpo}
+              <div class="meta">Análisis completado en ${(d.processing_time_ms / 1000).toFixed(1)} s</div>
             </div>
           </div>`;
       }
 
-      function tiles(list, cls) {
-        return `<div class="tiles ${cls}">` + list.map((t) =>
-          `<div class="tile ${t.status}"><small>${t.label}</small><strong>${t.value}</strong></div>`).join("") + "</div>";
-      }
+      const tiles = (list, cls) => `<div class="tiles ${cls}">` + list.map((t) =>
+        `<div class="tile ${t.status}"><small>${t.label}</small><strong>${t.value}</strong></div>`).join("") + "</div>";
 
       function panel(title, icon, group, body) {
         const st = groupStatus(group);
@@ -700,14 +750,17 @@
       }
 
       function meterRow(label, value, threshold, ok, text) {
-        const thr = threshold != null ? `<i class="bar-thr" style="left:${clamp(threshold)}%" title="Umbral"></i>` : "";
+        const thr = threshold != null ? `<i class="bar-thr" style="left:${clamp(threshold)}%" title="Mínimo"></i>` : "";
+        const cls = ok == null ? "" : ok ? "ok" : "bad";
         return `<div class="meter-row"><span>${label}</span>
-          <div class="bar"><span class="bar-fill ${ok == null ? "" : ok ? "ok" : "bad"}" style="width:${clamp(value)}%"></span>${thr}</div>
-          <b class="${ok == null ? "" : ok ? "ok" : "bad"}">${text}</b></div>`;
+          <div class="bar"><span class="bar-fill ${cls}" style="width:${clamp(value)}%"></span>${thr}</div>
+          <b class="${cls}">${text}</b></div>`;
       }
 
       const kv = (rows) => `<dl class="kv">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>`;
-      const jsonBlock = (d) => `<details class="json"><summary>Ver JSON completo</summary><pre>${esc(JSON.stringify(d, null, 2))}</pre></details>`;
+      const ICON = { passed: I.check, failed: I.x, not_evaluated: I.minus };
+      const renderChecks = (group) => "<ul class='checks'>" + Object.values(group || {}).map((c) =>
+        `<li class="${c.status}"><span class="ic">${ICON[c.status]}</span><span>${esc(c.message)}</span></li>`).join("") + "</ul>";
 
       function setDone(id, done) { $(id).classList.toggle("is-done", !!done); }
 
@@ -728,7 +781,6 @@
         });
       }
 
-      // Pestañas
       function selectTab(name) {
         const video = name !== "photo";
         $("tabVideo").setAttribute("aria-selected", video);
@@ -739,173 +791,178 @@
       $("tabVideo").onclick = () => selectTab("video");
       $("tabPhoto").onclick = () => selectTab("photo");
 
-      let stream, recorder, chunks = [], tick, t0;
-      let videoBlob = null, videoMime = "", idFile = null;
+      async function postForm(url, fd) {
+        try {
+          const res = await fetch(url, { method: "POST", body: fd });
+          let body = null;
+          try { body = await res.json(); } catch { /* sin cuerpo */ }
+          return { status: res.status, body };
+        } catch {
+          return { status: 0, body: null };
+        }
+      }
+
+      // ---------------------------------------------------------------- camara
+
+      const siguienteCuadro = (video) => Promise.race([
+        new Promise((r) => (video.requestVideoFrameCallback ? video.requestVideoFrameCallback(() => r()) : requestAnimationFrame(() => r()))),
+        esperarMs(250),
+      ]);
+
+      // Muchas camaras entregan cuadros negros el primer par de segundos (sobre todo
+      // la primera vez en un equipo). Se espera a ver imagen de verdad: varios cuadros
+      // seguidos con algo de brillo. Si el cuarto esta muy oscuro, se sigue al tope.
+      async function camaraLista(video) {
+        try { await video.play(); } catch { /* autoplay muted no deberia fallar */ }
+        const lienzo = document.createElement("canvas");
+        lienzo.width = 32; lienzo.height = 24;
+        const ctx = lienzo.getContext("2d", { willReadFrequently: true });
+        const tope = performance.now() + 8000;
+        let buenos = 0;
+        while (performance.now() < tope) {
+          await siguienteCuadro(video);
+          if (video.readyState < 2 || !video.videoWidth) continue;
+          ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
+          const d = ctx.getImageData(0, 0, lienzo.width, lienzo.height).data;
+          let suma = 0;
+          for (let i = 0; i < d.length; i += 4) suma += d[i] + d[i + 1] + d[i + 2];
+          buenos = suma / (d.length / 4 * 3) > 14 ? buenos + 1 : 0;
+          if (buenos >= 5) return true;
+        }
+        return false;
+      }
+
+      // La vista toma la proporcion real de la camara (4:3, 16:9, vertical...): se ve
+      // el encuadre completo que se graba y se analiza, sin recortes.
+      function seguirProporcion(video, stage) {
+        const ajustar = () => {
+          if (video.videoWidth && video.videoHeight) {
+            stage.style.setProperty("--cam-ratio", (video.videoWidth / video.videoHeight).toFixed(4));
+          }
+        };
+        video.onloadedmetadata = ajustar;
+        video.onresize = ajustar;  // p. ej. al girar el telefono
+        ajustar();
+      }
+    </script>
+
+    <script>
+      // ======================= Flujo de video con reto =======================
+      // Encuadre (el usuario presiona "Empezar" y, tras una cuenta 3-2-1, una sola
+      // grabacion con gestos y frase) -> grabacion lista -> verificar. El detector
+      // del navegador solo guia: el servidor vuelve a revisar todo en el video.
+
+      let stream = null, videoBlob = null, videoMime = "", idFile = null;
       // Reto vigente: se manda con el video y el servidor lo invalida al usarlo.
       let challenge = null;
-      const minDur = Number(document.body.dataset.min);
-      const maxDur = Number(document.body.dataset.max);
+      // Segundos del video en que se mostro la frase y en que termino: el servidor
+      // solo escucha ese tramo y compara la INE contra la cara de ese tramo.
+      let tiempos = {};
+      let grabando = false;
 
-      // ---------------- Detector de gestos en el navegador (MediaPipe) ----------------
-      // Solo guia al usuario: el servidor vuelve a revisar los gestos en el video.
-      // Mismos puntos y umbrales que app/services/face_track.py y gestures.py. Los
-      // cuadros llegan sin espejo (el espejo del preview es solo CSS), igual que al
-      // servidor: la izquierda del usuario queda a la derecha de la imagen.
-      const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35";
-      const MODELS = "https://storage.googleapis.com/mediapipe-models";
-      const TH = {
-        turn: Number(document.body.dataset.turn),
-        closed: Number(document.body.dataset.blinkClosed),
-        open: Number(document.body.dataset.blinkOpen),
-        turnFrames: 3, handFrames: 3,
-      };
-      let faceLm = null, handLm = null;
+      // ---------------- detector (Web Worker, o en la pagina si no se puede)
+      // det: { analizar(video, t, conManos) -> Promise<{f, hands} | null>, enPagina } o null sin detector.
+      let det = null;
 
-      async function createTask(Task, fileset, model, opts) {
-        // GPU si el navegador lo soporta; si no, CPU.
-        for (const delegate of ["GPU", "CPU"]) {
-          try {
-            return await Task.createFromOptions(fileset, {
-              baseOptions: { modelAssetPath: model, delegate }, runningMode: "VIDEO", ...opts,
-            });
-          } catch (e) { if (delegate === "CPU") throw e; }
-        }
+      // En un Worker la deteccion no compite con el video por el hilo de la pagina:
+      // en equipos lentos la camara se veia trabada. Si el navegador no puede, corre
+      // en la pagina con un ritmo que se adapta a lo que tarde cada cuadro.
+      function detectorEnWorker() {
+        return new Promise((resolve) => {
+          let w;
+          try { w = new Worker("static/detector.js"); } catch { resolve(null); return; }
+          const pendientes = new Map();
+          let n = 0;
+          const fallar = () => { clearTimeout(tope); w.terminate(); resolve(null); };
+          const tope = setTimeout(fallar, 30000);
+          w.onerror = fallar;
+          w.onmessage = (e) => {
+            const m = e.data;
+            if (m.tipo === "listo") {
+              if (!m.ok) { fallar(); return; }
+              clearTimeout(tope);
+              resolve({ analizar: enviar, enPagina: false });
+            } else if (m.tipo === "res") {
+              pendientes.get(m.id)?.(m.f === undefined ? null : { f: m.f, hands: m.hands });
+              pendientes.delete(m.id);
+            }
+          };
+          async function enviar(video, t, conManos) {
+            let bitmap;
+            try { bitmap = await createImageBitmap(video); } catch { return null; }
+            const id = ++n;
+            const res = new Promise((r) => pendientes.set(id, r));
+            w.postMessage({ tipo: "cuadro", id, bitmap, t, manos: conManos }, [bitmap]);
+            // Si el Worker no contesta, no se queda esperando para siempre.
+            return Promise.race([res, esperarMs(3000).then(() => { pendientes.delete(id); return null; })]);
+          }
+          w.postMessage({ tipo: "init" });
+        });
+      }
+
+      async function detectorEnPagina() {
+        const core = await import(new URL("static/detector-core.js", location.href).href);
+        const tareas = await core.cargar();
+        return { analizar: async (video, t, conManos) => core.analizar(tareas, video, t, conManos), enPagina: true };
       }
 
       async function loadDetector() {
         try {
-          const v = await import(`${MP}/vision_bundle.mjs`);
-          const fileset = await v.FilesetResolver.forVisionTasks(`${MP}/wasm`);
-          faceLm = await createTask(v.FaceLandmarker, fileset,
-            `${MODELS}/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
-            { numFaces: 1, outputFaceBlendshapes: true });
-          handLm = await createTask(v.HandLandmarker, fileset,
-            `${MODELS}/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            { numHands: 2 });
-          $("mpStatus").textContent = "Detector de gestos listo.";
-          $("mpStatus").dataset.state = "ready";
-        } catch (e) {
-          faceLm = handLm = null;
-          $("mpStatus").textContent = "No se pudo cargar el detector de gestos (" + e.message +
-            "). Puedes grabar igual: haz los gestos en orden; el servidor los revisa.";
-          $("mpStatus").dataset.state = "error";
+          det = (window.Worker && window.createImageBitmap ? await detectorEnWorker() : null) || await detectorEnPagina();
+        } catch {
+          // Sin detector se guia por tiempo; el servidor valida igual.
+          det = null;
         }
       }
+      // Empieza a cargar desde que abre la pagina; no se espera de mas al grabar.
+      const detector = loadDetector();
 
-      function faceInfo(res) {
-        if (!res.faceLandmarks || !res.faceLandmarks.length) return null;
-        const p = res.faceLandmarks[0];
-        const a = p[234].x, b = p[454].x, w = Math.abs(b - a);
-        const bs = {};
-        (res.faceBlendshapes?.[0]?.categories || []).forEach((c) => { bs[c.categoryName] = c.score; });
-        return {
-          turn: w > 1e-3 ? (p[1].x - (a + b) / 2) / w : null,
-          blink: ((bs.eyeBlinkLeft ?? 0) + (bs.eyeBlinkRight ?? 0)) / 2,
-          noseX: p[1].x, chinY: p[152].y,
-        };
+      // ---------------- pasos e iconos
+      const PSVG = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+      const ICONOS = {
+        rostro: PSVG('<circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M9 15c1.7 1.3 4.3 1.3 6 0"/>'),
+        turn_left: PSVG('<circle cx="13" cy="12" r="7"/><path d="M8 5L3 9l5 4"/><path d="M3 9h7"/>'),
+        turn_right: PSVG('<circle cx="11" cy="12" r="7"/><path d="M16 5l5 4-5 4"/><path d="M21 9h-7"/>'),
+        blink: PSVG('<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/>'),
+        raise_left_hand: PSVG('<path d="M8 13V6.5a1.5 1.5 0 013 0V12M11 11V4.5a1.5 1.5 0 013 0V11M14 11V6a1.5 1.5 0 013 0v7"/><path d="M17 13a1.5 1.5 0 013 0v1.5A7.5 7.5 0 0112.5 22h-.8a6.5 6.5 0 01-5.4-2.9l-2.6-3.9a1.5 1.5 0 012.4-1.8L8 15"/>'),
+        frase: PSVG('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>'),
+        listo: PSVG('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+      };
+      ICONOS.raise_right_hand = ICONOS.raise_left_hand;
+      const ETIQUETAS = {
+        turn_left: "Girar", turn_right: "Girar", blink: "Parpadear",
+        raise_left_hand: "Mano", raise_right_hand: "Mano", frase: "Frase",
+      };
+      const HINTS = {
+        turn_left: "Gira despacio, un poco más.",
+        turn_right: "Gira despacio, un poco más.",
+        blink: "Cierra los ojos un momento y ábrelos.",
+        raise_left_hand: "Muestra la palma a un lado de tu cara.",
+        raise_right_hand: "Muestra la palma a un lado de tu cara.",
+      };
+      const mmss = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+
+      function mostrarPaso(icono, texto, pista = "", animar = false) {
+        $("pasoCard").hidden = false;
+        $("pasoIcono").innerHTML = ICONOS[icono];
+        $("pasoIcono").classList.toggle("go", animar);
+        $("instruccion").textContent = texto;
+        $("pista").textContent = pista;
       }
 
-      // Estado del paso actual; se reinicia al pasar al siguiente.
-      let step = 0, run = 0, seenOpen = false, closed = false, lastFace = null, lastTs = 0, loopOn = false;
-
-      function stepDone(gesture, f, hands) {
-        if (gesture === "turn_left" || gesture === "turn_right") {
-          const ok = f && f.turn != null && (gesture === "turn_left" ? f.turn > TH.turn : f.turn < -TH.turn);
-          run = ok ? run + 1 : 0;
-          return run >= TH.turnFrames;
-        }
-        if (gesture === "blink") {
-          if (!f) return false;
-          if (f.blink <= TH.open) { if (closed) return true; seenOpen = true; }
-          else if (f.blink >= TH.closed && seenOpen) closed = true;
-          return false;
-        }
-        // Alzar mano: palma arriba de la barbilla, del lado pedido de la nariz.
-        if (!lastFace) return false;
-        const left = gesture === "raise_left_hand";
-        const ok = (hands || []).some((h) =>
-          (left ? h[9].x > lastFace.noseX : h[9].x < lastFace.noseX) && h[9].y < lastFace.chinY);
-        run = ok ? run + 1 : 0;
-        return run >= TH.handFrames;
-      }
-
-      function showStep() {
-        const gs = challenge.gestures;
-        [...$("steps").children].forEach((li, i) => {
-          li.className = i < step ? "done" : i === step ? "current" : "";
-        });
-        if (step < gs.length) {
-          $("prompt").textContent = gs[step].instruction;
-        } else {
-          $("prompt").textContent = "Ahora lee la frase en voz alta";
-          $("phrase").hidden = false;
-        }
-      }
-
-      function loop() {
-        if (!loopOn) return;
-        const v = $("preview");
-        const now = performance.now();
-        // ~15 cuadros por segundo, como el servidor.
-        if (now - lastTs >= 66 && v.readyState >= 2 && step < challenge.gestures.length) {
-          lastTs = now;
-          const gesture = challenge.gestures[step].gesture;
-          const f = faceInfo(faceLm.detectForVideo(v, now));
-          if (f) lastFace = f;
-          // El modelo de manos solo corre en su paso: es el mas pesado.
-          const hands = gesture.startsWith("raise_") ? handLm.detectForVideo(v, now).landmarks : null;
-          if (stepDone(gesture, f, hands)) {
-            step += 1; run = 0; seenOpen = false; closed = false;
-            showStep();
-          }
-        }
-        requestAnimationFrame(loop);
-      }
-
-      // ---------------- Grabacion ----------------
       function pickMime() {
         const opts = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
-        return opts.find((o) => MediaRecorder.isTypeSupported(o)) || "";
+        return opts.find((o) => window.MediaRecorder && MediaRecorder.isTypeSupported(o)) || "";
       }
 
       function refreshSend() {
         const missing = [];
-        if (!idFile) missing.push("identificacion");
-        if (!videoBlob) missing.push("video");
-        $("btnSend").disabled = missing.length > 0;
-        $("sendHint").textContent = missing.length ? "Falta: " + missing.join(" y ") + "." : "Listo para enviar.";
+        if (!idFile) missing.push("identificación");
+        if (!videoBlob) missing.push("prueba de vida");
+        $("btnSend").disabled = missing.length > 0 || grabando;
+        $("sendHint").textContent = missing.length ? "Falta: " + missing.join(" y ") + "." : "Todo listo para verificar.";
         setDone("stepId", idFile);
         setDone("stepVideo", videoBlob);
-      }
-
-      async function init() {
-        loadDetector();
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 },
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
-          $("preview").srcObject = stream;
-        } catch (e) {
-          $("warn").textContent = "Sin acceso a camara/microfono (" + e.message + "). Puedes subir un video.";
-          $("btnRec").disabled = true;
-        }
-      }
-
-      const fmt = (s) => s.toFixed(1).padStart(4, "0") + " s";
-
-      function showVideo(src) {
-        const v = $("preview");
-        v.srcObject = null; v.src = src; v.muted = false; v.controls = true;
-        v.classList.remove("mirror");
-        $("stage").classList.remove("is-live");
-      }
-
-      function showLive() {
-        const v = $("preview");
-        v.src = ""; v.controls = false; v.muted = true; v.srcObject = stream;
-        v.classList.add("mirror");
-        $("stage").classList.add("is-live");
       }
 
       $("idFile").onchange = (e) => {
@@ -914,231 +971,428 @@
         refreshSend();
       };
 
-      async function fetchChallenge() {
-        const res = await fetch("api/challenge", { method: "POST", headers: authHeaders() });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
-        return body;
-      }
-
-      $("btnRec").onclick = async () => {
-        $("btnRec").disabled = true;
-        chunks = []; videoBlob = null; refreshSend();
-        $("warn").textContent = "";
+      async function abrirCamara() {
+        if (stream) return true;
         try {
-          challenge = await fetchChallenge();
-        } catch (e) {
-          $("warn").textContent = "No se pudo pedir el reto: " + e.message;
-          $("btnRec").disabled = false;
-          return;
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: { echoCancellation: true, noiseSuppression: true },
+          });
+          return true;
+        } catch {
+          return false;
         }
-
-        $("steps").innerHTML = challenge.gestures.map((g) => `<li>${esc(g.instruction)}</li>`).join("");
-        $("phrase").textContent = challenge.phrase;
-        $("prompt").hidden = false;
-        step = 0; run = 0; seenOpen = false; closed = false; lastFace = null;
-        if (faceLm) {
-          $("phrase").hidden = true;
-          showStep();
-        } else {
-          // Sin detector no hay guia paso a paso: se muestra todo de una vez.
-          $("phrase").hidden = false;
-          $("prompt").textContent = "Haz los gestos en orden y despues lee la frase";
-        }
-
-        showLive();
-        videoMime = pickMime();
-        recorder = new MediaRecorder(stream, videoMime ? { mimeType: videoMime } : undefined);
-        recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-        recorder.onstop = onStop;
-        recorder.start();
-        t0 = Date.now();
-        $("btnStop").disabled = false;
-        if (faceLm) { loopOn = true; requestAnimationFrame(loop); }
-        tick = setInterval(() => {
-          const s = (Date.now() - t0) / 1000;
-          $("timer").innerHTML = '<span class="rec">REC</span> ' + fmt(s);
-          if (s >= maxDur) $("btnStop").click();
-        }, 100);
-      };
-
-      $("btnStop").onclick = () => {
-        if (recorder && recorder.state !== "inactive") recorder.stop();
-        clearInterval(tick);
-        loopOn = false;
-        $("prompt").hidden = true;
-        $("btnStop").disabled = true; $("btnRec").disabled = false;
-      };
-
-      function onStop() {
-        const secs = (Date.now() - t0) / 1000;
-        $("timer").textContent = fmt(secs);
-        videoBlob = new Blob(chunks, { type: videoMime || "video/webm" });
-        showVideo(URL.createObjectURL(videoBlob));
-        const warns = [];
-        if (secs < minDur) warns.push(`Grabaste ${secs.toFixed(1)}s y el minimo es ${minDur}s: la voz saldra invalid_audio.`);
-        if (faceLm && step < challenge.gestures.length) warns.push("No se completaron todos los gestos: el servidor lo rechazara.");
-        $("warn").textContent = warns.join(" ");
-        refreshSend();
       }
 
-      $("videoFile").onchange = (e) => {
-        const f = e.target.files[0];
-        if (!f) return;
-        videoBlob = f; videoMime = f.type;
-        showVideo(URL.createObjectURL(f));
-        $("warn").textContent = challenge ? "" : "Sin reto: el servidor lo rechaza salvo con REQUIRE_CHALLENGE=false.";
+      async function pedirReto() {
+        const res = await fetch("api/challenge", { method: "POST" });
+        if (!res.ok) throw new Error(String(res.status));
+        return res.json();
+      }
+
+      function mostrarEnVivo() {
+        const v = $("video");
+        v.pause(); v.removeAttribute("src"); v.controls = false; v.muted = true;
+        v.srcObject = stream;
+        v.classList.add("mirror");
+        v.hidden = false;
+        $("placeholder").hidden = true;
+      }
+
+      function mostrarGrabacion(url) {
+        const v = $("video");
+        v.srcObject = null; v.src = url; v.muted = false; v.controls = true;
+        v.classList.remove("mirror");
+        $("stage").classList.remove("encuadre", "con-rostro");
+      }
+
+      async function iniciarIntento() {
+        $("btnIniciar").disabled = true;
+        $("btnRepetir").disabled = true;
+        $("aviso").textContent = "";
+        cargando("Preparando la cámara", "Si el navegador lo pide, permite el acceso a la cámara y al micrófono.");
+        try {
+          if (!(await abrirCamara())) {
+            listo();
+            $("aviso").textContent = "Necesitamos acceso a la cámara y al micrófono. Permítelo en el navegador e intenta de nuevo.";
+            return;
+          }
+          try {
+            challenge = await pedirReto();
+          } catch {
+            listo();
+            $("aviso").textContent = "No pudimos iniciar la prueba. Intenta de nuevo en un momento.";
+            return;
+          }
+          videoBlob = null; tiempos = {};
+          refreshSend();
+          await grabar(challenge);
+        } finally {
+          $("btnIniciar").disabled = false;
+          $("btnRepetir").disabled = false;
+        }
+      }
+      $("btnIniciar").onclick = iniciarIntento;
+      $("btnRepetir").onclick = iniciarIntento;
+
+      async function grabar(reto) {
+        const gestos = reto.gestures;
+        const total = gestos.length + 1;  // gestos + frase
+        const video = $("video");
+        const stage = $("stage");
+        mostrarEnVivo();
+        seguirProporcion(video, stage);
+
+        const pasos = [...gestos.map((g) => g.gesture), "frase"];
+        $("progreso").innerHTML = pasos.map((p) => `<li>${ICONOS[p]}<span>${ETIQUETAS[p]}</span></li>`).join("");
+        const items = [...$("progreso").children];
+        $("progresoHead").hidden = false;
+        $("pasoN").textContent = "Prepárate";
+        mostrarPaso("rostro", "Coloca tu rostro dentro del óvalo", "Cuando estés listo, presiona Empezar grabación.");
+        $("fraseBox").hidden = true;
+        $("btnIniciar").hidden = true;
+        $("btnRepetir").hidden = true;
+        $("btnListo").hidden = true;
+        $("rec").hidden = true;
+        $("bien").hidden = true;
+        $("cuentaAtras").hidden = true;
+        stage.classList.add("encuadre");
+        stage.classList.remove("con-rostro");
+        const btnGrabar = $("btnGrabar");
+        btnGrabar.hidden = false;
+        btnGrabar.disabled = true;
+        grabando = true;
         refreshSend();
-      };
+
+        // La vista se arma debajo del cargador: asi el video ya se esta pintando.
+        const [hayImagen] = await Promise.all([
+          camaraLista(video),
+          Promise.race([detector, esperarMs(6000)]),
+        ]);
+        if (!hayImagen) $("pista").textContent = "Se ve muy oscuro. Busca más luz para que te veamos bien.";
+        listo();
+
+        const mime = pickMime();
+        const chunks = [];
+        // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida.
+        const recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
+        recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+
+        // fase: encuadre -> cuenta -> gesto -> frase -> fin
+        let fase = "encuadre", paso = 0, desde = performance.now(), inicioRec = 0, ultimo = 0;
+        let fraseInicio = null, fraseFin = null;
+        let ocupado = false, intervalo = 66;  // ~15 cuadros por segundo como maximo
+        let run = 0, faceRun = 0, seenOpen = false, closed = false, lastFace = null, fraseTimer = null;
+
+        const marcar = () => items.forEach((li, i) => {
+          li.className = i < paso ? "done" : i === paso ? "current" : "";
+        });
+
+        function celebrar() {
+          const b = $("bien");
+          b.hidden = true;
+          void b.offsetWidth;  // reinicia la animacion
+          b.hidden = false;
+          setTimeout(() => { b.hidden = true; }, 700);
+        }
+
+        function siguientePaso() {
+          if (paso >= 0 && fase === "gesto") celebrar();
+          paso += 1; run = 0; seenOpen = false; closed = false; desde = performance.now();
+          marcar();
+          $("pasoN").textContent = `Paso ${paso + 1} de ${total}`;
+          if (paso < gestos.length) {
+            mostrarPaso(gestos[paso].gesture, gestos[paso].instruction, "", true);
+            return;
+          }
+          fase = "frase";
+          fraseInicio = (performance.now() - inicioRec) / 1000;
+          mostrarPaso("frase", "Ahora lee la frase en voz alta", "Mirando a la cámara, con voz clara.");
+          $("frase").textContent = reto.phrase;
+          $("frase").classList.toggle("larga", reto.phrase.split(/\s+/).length > 25);
+          $("fraseBox").hidden = false;
+          $("btnListo").hidden = false;
+          $("btnListo").disabled = true;
+          setTimeout(() => { $("btnListo").disabled = false; }, 2500);
+          // Tiempo para leer: ~0.5 s por palabra mas margen.
+          const segundos = Math.min(30, Math.max(6, reto.phrase.split(/\s+/).length * 0.5 + 3));
+          const barra = $("cuenta");
+          barra.style.transition = "none";
+          barra.style.transform = "scaleX(1)";
+          void barra.offsetWidth;
+          barra.style.transition = `transform ${segundos}s linear`;
+          barra.style.transform = "scaleX(0)";
+          fraseTimer = setTimeout(terminar, segundos * 1000);
+        }
+
+        function empezarGrabacion() {
+          recorder.start();
+          inicioRec = performance.now();
+          $("rec").hidden = false;
+          stage.classList.remove("encuadre", "con-rostro");
+          fase = "gesto";
+          paso = -1;
+          siguientePaso();
+        }
+
+        // El usuario decide cuando empieza; una cuenta corta le da tiempo de acomodarse.
+        btnGrabar.onclick = () => {
+          if (fase !== "encuadre") return;
+          fase = "cuenta";
+          btnGrabar.hidden = true;
+          const numero = $("cuentaAtras");
+          let n = 3;
+          const tic = () => {
+            if (n === 0) { numero.hidden = true; empezarGrabacion(); return; }
+            numero.textContent = n;
+            numero.hidden = false;
+            numero.classList.remove("tic");
+            void numero.offsetWidth;  // reinicia la animacion
+            numero.classList.add("tic");
+            n -= 1;
+            setTimeout(tic, 900);
+          };
+          tic();
+        };
+
+        // Solo deja empezar con el rostro a la vista (sin detector, de inmediato).
+        function encuadre(veRostro) {
+          const ok = !det || veRostro;
+          btnGrabar.disabled = !ok;
+          stage.classList.toggle("con-rostro", ok);
+          $("instruccion").textContent = ok ? "Todo listo para empezar" : "Coloca tu rostro dentro del óvalo";
+        }
+
+        function cumplido(gesto, f, hands) {
+          if (gesto === "turn_left" || gesto === "turn_right") {
+            const ok = f && f.turn != null && (gesto === "turn_left" ? f.turn > TH.turn : f.turn < -TH.turn);
+            run = ok ? run + 1 : 0;
+            return run >= TH.turnFrames;
+          }
+          if (gesto === "blink") {
+            if (!f) return false;
+            if (f.blink <= TH.open) { if (closed) return true; seenOpen = true; }
+            else if (f.blink >= TH.closed && seenOpen) closed = true;
+            return false;
+          }
+          // Alzar mano: palma arriba de la barbilla, del lado pedido de la nariz.
+          if (!lastFace) return false;
+          const izquierda = gesto === "raise_left_hand";
+          const ok = (hands || []).some((p) =>
+            (izquierda ? p.x > lastFace.noseX : p.x < lastFace.noseX) && p.y < lastFace.chinY);
+          run = ok ? run + 1 : 0;
+          return run >= TH.handFrames;
+        }
+
+        function terminar() {
+          if (fase === "fin") return;
+          if (fase === "frase") fraseFin = (performance.now() - inicioRec) / 1000;
+          fase = "fin";
+          clearTimeout(fraseTimer);
+          $("btnListo").hidden = true;
+          $("pasoN").textContent = "Guardando…";
+          items.forEach((li) => { li.className = "done"; });
+          const falta = MIN_DUR * 1000 - (performance.now() - inicioRec);
+          setTimeout(() => { if (recorder.state !== "inactive") recorder.stop(); }, Math.max(0, falta));
+        }
+        $("btnListo").onclick = terminar;
+
+        recorder.onstop = () => {
+          $("rec").hidden = true;
+          $("fraseBox").hidden = true;
+          videoMime = mime;
+          videoBlob = new Blob(chunks, { type: mime || "video/webm" });
+          tiempos = { fraseInicio, fraseFin };
+          grabando = false;
+          mostrarGrabacion(URL.createObjectURL(videoBlob));
+          $("pasoN").textContent = "Grabación lista";
+          mostrarPaso("listo", "Prueba de vida grabada", "Revisa el video si quieres y presiona Verificar identidad.");
+          $("btnRepetir").hidden = false;
+          refreshSend();
+        };
+
+        function tick(now) {
+          if (fase === "fin") return;
+          if (inicioRec) {
+            $("recTiempo").textContent = mmss(now - inicioRec);
+            if (now - inicioRec > (MAX_DUR - 1) * 1000) { terminar(); return; }
+          }
+
+          // Solo hace falta detectar al encuadrar y en los gestos (no en la cuenta ni en la frase).
+          // Un cuadro a la vez: si el equipo es lento, se analizan menos por segundo.
+          const detectar = fase === "encuadre" || fase === "gesto";
+          if (detectar && !ocupado && now - ultimo >= intervalo && video.readyState >= 2) {
+            ultimo = now;
+            const gesto = fase === "gesto" ? gestos[paso].gesture : null;
+            if (!det) {
+              procesar(null, null, now);
+            } else {
+              ocupado = true;
+              const enviado = { fase, paso, t0: performance.now() };
+              det.analizar(video, now, !!gesto?.startsWith("raise_")).then((r) => {
+                ocupado = false;
+                const dur = performance.now() - enviado.t0;
+                // En la pagina se deja al menos el doble de respiro para que el video se pinte.
+                intervalo = Math.min(300, Math.max(66, det.enPagina ? dur * 3 : dur));
+                // Un resultado que llega tarde, de otro paso, se descarta.
+                if (r && fase === enviado.fase && paso === enviado.paso) procesar(r.f, r.hands, performance.now());
+              });
+            }
+          }
+          requestAnimationFrame(tick);
+        }
+
+        function procesar(f, hands, now) {
+          if (f) lastFace = f;
+          if (fase === "encuadre") {
+            faceRun = f ? faceRun + 1 : 0;
+            encuadre(faceRun >= TH.faceFrames);
+          } else if (fase === "gesto") {
+            const gesto = gestos[paso].gesture;
+            const hecho = det ? cumplido(gesto, f, hands) : now - desde > 3500;
+            if (hecho) siguientePaso();
+            else if (now - desde > 7000) $("pista").textContent = HINTS[gesto];
+          }
+        }
+        requestAnimationFrame(tick);
+      }
+
+      // ---------------- verificar
 
       $("btnSend").onclick = async () => {
         $("btnSend").disabled = true;
-        $("result").innerHTML = loadingState("Analizando voz, rostro y gestos...", "Puede tardar unos segundos; el servidor revisa todo el video.");
-        revealResult("result");
+        cargando("Verificando identidad", "Analizamos rostro, movimientos, voz y prueba de vida. Puede tardar hasta un minuto.");
 
         const ext = (videoMime || "").includes("mp4") ? "mp4" : "webm";
         const fd = new FormData();
         fd.append("id_image", idFile, idFile.name);
-        fd.append("video", videoBlob, videoBlob.name || `grabacion.${ext}`);
+        fd.append("video", videoBlob, `prueba.${ext}`);
         if (challenge) fd.append("challenge_id", challenge.challenge_id);
         if ($("thr").value) fd.append("match_threshold_percent", $("thr").value);
+        if (tiempos.fraseInicio != null) fd.append("frase_inicio", tiempos.fraseInicio.toFixed(2));
+        if (tiempos.fraseFin != null) fd.append("frase_fin", tiempos.fraseFin.toFixed(2));
 
-        try {
-          const res = await fetch("api/verify-identity", { method: "POST", body: fd, headers: authHeaders() });
-          render(res.status, await res.json());
-        } catch (e) {
-          $("result").innerHTML = errorState("Error", e.message);
-        }
+        const { status, body } = await postForm("api/verify-identity", fd);
+        listo();
+        render(status, body);
+        revealResult("result");
+
         // El reto ya se gasto: para reintentar hay que grabar con uno nuevo.
-        if (challenge) {
-          challenge = null; videoBlob = null;
-          setDone("stepVideo", false);
-          $("sendHint").textContent = "El reto ya se uso: graba de nuevo para otro intento.";
-          $("btnSend").disabled = true;
-          return;
-        }
+        challenge = null; videoBlob = null; tiempos = {};
         refreshSend();
+        $("sendHint").textContent = "Para otro intento, graba la prueba de vida de nuevo.";
       };
 
-      const ICON = { passed: I.check, failed: I.x, not_evaluated: I.minus };
-      const pct = (x) => (x == null ? "&mdash;" : `${Math.round(x * 100)}%`);
-      const words = (arr) => arr.length
-        ? `<span class="words">${arr.map((w) => `<span class="word">${esc(w)}</span>`).join("")}</span>`
-        : "<span class='none'>ninguna</span>";
-
-      function renderChecks(group) {
-        return "<ul class='checks'>" + Object.entries(group).map(([name, c]) =>
-          `<li class="${c.status}"><span class="ic">${ICON[c.status]}</span>
-             <span>${esc(c.message)}${c.code ? ` <code>${esc(c.code)}</code>` : ""}</span></li>`
-        ).join("") + "</ul>";
-      }
-
-      function renderFace(checks, f) {
-        let html = renderChecks(checks);
-        if (!f) return html;
-        const thr = f.similarity.threshold_percent;
-        const segs = f.segments.map((s) => {
-          const when = s.time_sec != null ? ` · ${s.time_sec.toFixed(1)} s` : "";
-          return meterRow(`Tramo ${s.index}${when}`, s.face_detected ? s.similarity_percent : 0, thr, s.match,
-            s.face_detected ? `${s.similarity_percent.toFixed(1)}%` : "sin cara");
-        }).join("");
-        return html + `
-          <div class="sub">Similitud promedio</div>
-          <div class="big">${f.similarity.average_percent.toFixed(2)}%<small>mínimo por tramo ${thr}%</small></div>
-          <div class="sub">Por tramo del video</div>
-          <div class="meter">${segs}</div>
-          <p class="hint">Caras por cuadro (máximo): ${f.faces_in_video.max_per_frame}. La línea marca el umbral.</p>`;
-      }
-
-      function renderVoice(checks, v) {
-        let html = renderChecks(checks);
-        if (!v) return html;
-        return html + `
-          <div class="sub">Coincidencia de la frase</div>
-          <div class="big">${v.phrase_match.match_percent.toFixed(2)}%</div>
-          <div class="compare" style="margin-top:10px">
-            <div class="quote"><small>Frase pedida</small>${esc(v.expected_phrase)}</div>
-            <div class="quote"><small>Se escuchó</small><b>${esc(v.transcript) || "(nada)"}</b></div>
-          </div>
-          <div style="margin-top:8px">${kv([
-            ["Palabras faltantes", words(v.phrase_match.missing_words)],
-            ["Palabras sobrantes", words(v.phrase_match.extra_words)],
-            ["Duración", `${v.audio.duration_sec} s (voz ${v.audio.speech_sec} s)`],
-          ])}</div>`;
-      }
-
-      function renderLiveness(checks, l) {
-        let html = renderChecks(checks);
-        if (!l) return html;
-        const a = l.anti_spoofing, s = l.lip_sync;
-        const segs = a.by_segment_probability.map((x, i) =>
-          meterRow(`Tramo ${i + 1}`, (x ?? 0) * 100, null, null, pct(x))).join("");
-        return html + `
-          <div class="sub">Probabilidad de cara real</div>
-          <div class="big">${pct(a.real_probability)}</div>
-          <div class="meter" style="margin-top:8px">${segs}</div>
-          <div class="sub">Labios vs. voz</div>
-          ${kv([
-            ["Correlación", s.audio_correlation ?? "-"],
-            ["Movimiento al hablar", s.mouth_motion_speaking ?? "-"],
-            ["Cara visible", pct(s.face_tracked_ratio)],
-          ])}`;
-      }
+      // ---------------- resultado
 
       const GESTURE = {
         turn_left: "Girar a la izquierda", turn_right: "Girar a la derecha", blink: "Parpadear",
         raise_left_hand: "Alzar mano izquierda", raise_right_hand: "Alzar mano derecha",
       };
 
+      function renderFace(checks, f) {
+        let html = renderChecks(checks);
+        if (!f) return html;
+        const thr = f.similarity.threshold_percent;
+        const frase = f.segments.find((s) => s.role === "frase");
+        if (frase) {
+          // La INE se compara contra la cara mientras leia la frase (de frente y quieto);
+          // en los movimientos se revisa que sea la misma persona que leyo.
+          const sp = f.same_person || {};
+          const gestos = f.segments.filter((s) => s.role !== "frase").map((s, i) =>
+            meterRow(`Movimientos ${i + 1}`, s.same_person_percent ?? 0, sp.threshold_percent, s.face_detected ? s.match : false,
+              s.face_detected && s.same_person_percent != null ? `${s.same_person_percent.toFixed(1)}%` : "sin rostro")).join("");
+          return html + `
+            <div class="sub">Rostro contra la INE (mientras leía)</div>
+            <div class="big">${num(f.similarity.average_percent, 2)}<small>mínimo ${thr}%</small></div>
+            <div class="meter" style="margin-top:8px">${meterRow("Similitud", frase.similarity_percent ?? 0, thr, frase.match, num(frase.similarity_percent))}</div>
+            <div class="sub">Misma persona durante los movimientos</div>
+            <div class="meter">${gestos}</div>
+            <p class="hint">La línea vertical marca el mínimo requerido.</p>`;
+        }
+        const segs = f.segments.map((s) => meterRow(`Tramo ${s.index}`, s.face_detected ? s.similarity_percent : 0, thr, s.match,
+          s.face_detected ? `${s.similarity_percent.toFixed(1)}%` : "sin rostro")).join("");
+        return html + `
+          <div class="sub">Similitud promedio</div>
+          <div class="big">${num(f.similarity.average_percent, 2)}<small>mínimo por tramo ${thr}%</small></div>
+          <div class="sub">Por tramo del video</div>
+          <div class="meter">${segs}</div>
+          <p class="hint">La línea vertical marca el mínimo requerido.</p>`;
+      }
+
+      function renderVoice(checks, v) {
+        let html = renderChecks(checks);
+        if (!v) return html;
+        const words = (arr) => arr.length
+          ? `<span class="words">${arr.map((w) => `<span class="word">${esc(w)}</span>`).join("")}</span>`
+          : "<span class='none'>ninguna</span>";
+        return html + `
+          <div class="sub">Coincidencia de la frase</div>
+          <div class="big">${num(v.phrase_match.match_percent, 1)}</div>
+          <div class="compare" style="margin-top:10px">
+            <div class="quote"><small>Frase pedida</small>${esc(v.expected_phrase)}</div>
+            <div class="quote"><small>Se escuchó</small><b>${esc(v.transcript) || "(nada)"}</b></div>
+          </div>
+          <div style="margin-top:8px">${kv([
+            ["Palabras faltantes", words(v.phrase_match.missing_words)],
+            ["Palabras de más", words(v.phrase_match.extra_words)],
+          ])}</div>`;
+      }
+
+      function renderLiveness(checks, l) {
+        let html = renderChecks(checks);
+        if (!l) return html;
+        const a = l.anti_spoofing;
+        const segs = (a.by_segment_probability || []).map((x, i) =>
+          meterRow(`Tramo ${i + 1}`, (x ?? 0) * 100, null, null, pct(x))).join("");
+        return html + `
+          <div class="sub">Probabilidad de persona real</div>
+          <div class="big">${pct(a.real_probability)}</div>
+          <div class="meter" style="margin-top:8px">${segs}</div>`;
+      }
+
       function renderChallenge(checks, c) {
         let html = renderChecks(checks);
         if (!c) return html;
-        const rows = c.gestures.map((g, i) => `<li><b>${i + 1}. ${GESTURE[g.gesture]}</b>
-          <span class="${g.detected ? "ok" : "bad"}">${g.detected ? `✓ segundo ${g.time_sec}` : "✗ no detectado"}</span></li>`).join("");
-        const m = c.measurements;
-        return html + `<div class="sub">Orden del reto</div><ol class="timeline">${rows}</ol>
-          ${m ? `<div class="sub">Medido</div>${kv([
-            ["Giro máximo", `izq ${m.max_turn_left ?? "-"} / der ${m.max_turn_right ?? "-"} (umbral ${m.turn_threshold})`],
-            ["Parpadeo máximo", pct(m.max_blink_probability)],
-          ])}` : ""}`;
+        const rows = c.gestures.map((g, i) => `<li><span>${i + 1}. ${GESTURE[g.gesture] || ""}</span>
+          <b class="${g.detected ? "ok" : "bad"}">${g.detected ? `✓ segundo ${g.time_sec}` : "✗ no detectado"}</b></li>`).join("");
+        return html + `<div class="sub">Orden del reto</div><ol class="timeline">${rows}</ol>`;
       }
 
       function render(status, d) {
-        if (status !== 200) {
-          $("result").innerHTML = errorState(`HTTP ${status}`, JSON.stringify(d, null, 2));
+        if (status !== 200 || !d || !d.result) {
+          const [t, x] = errorAmigable(status);
+          $("result").innerHTML = aviso("result", t, x);
           return;
         }
         const f = d.details.face, v = d.details.voice, l = d.details.liveness, c = d.details.challenge;
         $("result").innerHTML = verdict(d) + tiles([
-          { label: "Rostro", value: num(f?.similarity?.average_percent), status: groupStatus(d.checks.face) },
-          { label: "Gestos", value: c?.gestures ? `${c.gestures.filter((g) => g.detected).length}/${c.gestures.length}` : "&mdash;", status: groupStatus(d.checks.challenge) },
+          { label: "Rostro vs. INE", value: num(f?.similarity?.average_percent), status: groupStatus(d.checks.face) },
+          { label: "Movimientos", value: c?.gestures ? `${c.gestures.filter((g) => g.detected).length}/${c.gestures.length}` : "&mdash;", status: groupStatus(d.checks.challenge) },
           { label: "Frase", value: num(v?.phrase_match?.match_percent), status: groupStatus(d.checks.voice) },
-          { label: "Cara real", value: pct(l?.anti_spoofing?.real_probability), status: groupStatus(d.checks.liveness) },
+          { label: "Persona real", value: pct(l?.anti_spoofing?.real_probability), status: groupStatus(d.checks.liveness) },
         ], "four") +
-          panel("Rostro (video vs. identificación)", I.face, d.checks.face, renderFace(d.checks.face, f)) +
-          panel("Gestos del reto", I.hand, d.checks.challenge, renderChallenge(d.checks.challenge, c)) +
-          panel("Voz (frase)", I.mic, d.checks.voice, renderVoice(d.checks.voice, v)) +
-          panel("Prueba de vida", I.pulse, d.checks.liveness, renderLiveness(d.checks.liveness, l)) +
-          jsonBlock(d);
+          panel("Rostro", I.face, d.checks.face, renderFace(d.checks.face, f)) +
+          panel("Movimientos del reto", I.hand, d.checks.challenge, renderChallenge(d.checks.challenge, c)) +
+          panel("Frase hablada", I.mic, d.checks.voice, renderVoice(d.checks.voice, v)) +
+          panel("Prueba de vida", I.pulse, d.checks.liveness, renderLiveness(d.checks.liveness, l));
       }
 
-      $("result").innerHTML = emptyState("Sube la identificación, graba el reto y presiona Verificar identidad.");
+      $("result").innerHTML = emptyState("Sube la identificación, graba la prueba de vida y presiona Verificar identidad.");
       dropzone("idFile");
-      dropzone("videoFile");
-      init();
+      refreshSend();
     </script>
 
     <script>
-      // Seccion independiente: usa sus propios ids (prefijo "p") y reutiliza
-      // $, esc, pct, renderChecks y authHeaders del script de arriba.
+      // ======================= Flujo de foto contra identificacion =======================
       let pIdFile = null, pPhoto = null, pStream = null;
 
       function pRefresh() {
         const missing = [];
-        if (!pIdFile) missing.push("identificacion");
+        if (!pIdFile) missing.push("identificación");
         if (!pPhoto) missing.push("foto");
         $("pBtnSend").disabled = missing.length > 0;
-        $("pSendHint").textContent = missing.length ? "Falta: " + missing.join(" y ") + "." : "Listo para enviar.";
+        $("pSendHint").textContent = missing.length ? "Falta: " + missing.join(" y ") + "." : "Todo listo para verificar.";
         setDone("pStepId", pIdFile);
         setDone("pStepPhoto", pPhoto);
       }
@@ -1160,17 +1414,25 @@
       };
 
       $("pBtnCam").onclick = async () => {
+        $("pAviso").textContent = "";
+        cargando("Preparando la cámara", "Si el navegador lo pide, permite el acceso a la cámara.");
         try {
-          pStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-          $("pCam").srcObject = pStream;
-          $("pCam").style.display = "block";
-          $("pCamWrap").hidden = false;
-          $("pBtnCam").disabled = true;
-          $("pBtnShot").disabled = false;
-          $("pWarn").textContent = "";
-        } catch (e) {
-          $("pWarn").textContent = "Sin acceso a la camara (" + e.message + "). Sube una foto.";
+          pStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } });
+        } catch {
+          listo();
+          $("pAviso").textContent = "No tenemos acceso a la cámara. Permítelo en el navegador o sube una foto.";
+          return;
         }
+        const v = $("pCam");
+        v.srcObject = pStream;
+        $("pStage").hidden = false;
+        seguirProporcion(v, $("pStage"));
+        // Se espera a que la camara entregue imagen real antes de dejar tomar la foto.
+        const hayImagen = await camaraLista(v);
+        listo();
+        if (!hayImagen) $("pAviso").textContent = "Se ve muy oscuro. Busca más luz para una mejor foto.";
+        $("pBtnCam").disabled = true;
+        $("pBtnShot").disabled = false;
       };
 
       $("pBtnShot").onclick = () => {
@@ -1188,58 +1450,46 @@
 
       $("pBtnSend").onclick = async () => {
         $("pBtnSend").disabled = true;
-        $("pResult").innerHTML = loadingState("Comparando rostros...", "Detección, similitud, calidad y prueba de vida.");
-        revealResult("pResult");
+        cargando("Comparando rostros", "Revisamos la similitud, la calidad de la foto y que sea una persona real.");
 
         const fd = new FormData();
         fd.append("id_image", pIdFile, pIdFile.name);
         fd.append("photo", pPhoto, pPhoto.name);
         if ($("pThr").value) fd.append("match_threshold_percent", $("pThr").value);
 
-        try {
-          const res = await fetch("api/verify-photo", { method: "POST", body: fd, headers: authHeaders() });
-          pRender(res.status, await res.json());
-        } catch (e) {
-          $("pResult").innerHTML = errorState("Error", e.message);
-        }
+        const { status, body } = await postForm("api/verify-photo", fd);
+        listo();
+        pRender(status, body);
+        revealResult("pResult");
         pRefresh();
       };
 
-      function pQuality(q) {
-        if (!q) return "&mdash;";
-        return `cara ${q.size_px}px · nitidez ${q.sharpness} · brillo ${q.brightness} · detector ${pct(q.detector_score)}`;
-      }
-
       function pRender(status, d) {
-        if (status !== 200) {
-          $("pResult").innerHTML = errorState(`HTTP ${status}`, JSON.stringify(d, null, 2));
+        if (status !== 200 || !d || !d.result) {
+          const [t, x] = errorAmigable(status);
+          $("pResult").innerHTML = aviso("pResult", t, x);
           return;
         }
         const det = d.details;
         const sim = det.similarity;
-        const match = d.checks.face.face_match.status === "passed";
+        const match = d.checks.face.face_match?.status === "passed";
         const a = det.anti_spoofing;
 
         $("pResult").innerHTML = verdict(d) + tiles([
-          { label: "Rostro", value: sim ? `${sim.percent.toFixed(1)}%` : "&mdash;", status: groupStatus(d.checks.face) },
+          { label: "Rostro vs. INE", value: sim ? `${sim.percent.toFixed(1)}%` : "&mdash;", status: groupStatus(d.checks.face) },
           { label: "Calidad", value: STATUS_LABEL[groupStatus(d.checks.quality)], status: groupStatus(d.checks.quality) },
-          { label: "Cara real", value: pct(a?.real_probability), status: groupStatus(d.checks.liveness) },
+          { label: "Persona real", value: pct(a?.real_probability), status: groupStatus(d.checks.liveness) },
         ], "three") +
-          panel("Rostro (foto vs. identificación)", I.face, d.checks.face, renderChecks(d.checks.face) +
-            (sim ? `<div class="sub">Similitud</div>
+          panel("Rostro", I.face, d.checks.face, renderChecks(d.checks.face) +
+            (sim ? `<div class="sub">Similitud con la INE</div>
               <div class="big ${match ? "ok" : "bad"}">${sim.percent.toFixed(2)}%<small>mínimo ${sim.threshold_percent}%</small></div>
               <div class="meter" style="margin-top:8px">${meterRow("Similitud", sim.percent, sim.threshold_percent, match, `${sim.percent.toFixed(1)}%`)}</div>
-              <p class="hint">Similitud coseno ${sim.score} · mínimo coseno ${sim.threshold_score} · caras en la foto: ${det.faces_in_photo}</p>` : "")) +
-          panel("Calidad de la foto", I.image, d.checks.quality, renderChecks(d.checks.quality) + kv([
-            ["Foto", pQuality(det.photo_face_quality)],
-            ["Identificación (no se valida)", pQuality(det.id_face_quality)],
-          ])) +
+              <p class="hint">La línea vertical marca el mínimo requerido.</p>` : "")) +
+          panel("Calidad de la foto", I.image, d.checks.quality, renderChecks(d.checks.quality)) +
           panel("Prueba de vida", I.pulse, d.checks.liveness, renderChecks(d.checks.liveness) +
-            (a ? `<div class="sub">Probabilidad de cara real</div>
-              <div class="meter">${meterRow("Cara real", (a.real_probability ?? 0) * 100, (a.threshold_probability ?? 0) * 100,
-                a.real_probability >= a.threshold_probability, pct(a.real_probability))}</div>
-              <p class="hint">Mínimo requerido: ${pct(a.threshold_probability)}</p>` : "")) +
-          jsonBlock(d);
+            (a ? `<div class="sub">Probabilidad de persona real</div>
+              <div class="meter">${meterRow("Persona real", (a.real_probability ?? 0) * 100, (a.threshold_probability ?? 0) * 100,
+                a.real_probability >= a.threshold_probability, pct(a.real_probability))}</div>` : ""));
       }
 
       $("pResult").innerHTML = emptyState("Sube la identificación y una foto de la persona, y presiona Comparar foto.");

@@ -76,22 +76,33 @@ def percent_to_similarity(percent: float, mid: float, k: float) -> float:
     return round(min(1.0, mid + math.log(p / (1.0 - p)) / k), 4)
 
 
-def compare_id_against_segments(
-    np_id: np.ndarray, segments: list[dict | None], face_stats: dict, threshold_percent: float
-) -> dict:
-    """Compara la cara de la identificacion contra la mejor cara de cada tramo.
-
-    El porcentaje es el promedio de los tramos, pero solo es match si TODOS
-    llegan a threshold_percent: con el promedio solo, un tramo con otra persona quedaria
-    escondido (0.90 + 0.90 + 0.10 promedia 0.63 y pasaria).
-    """
+def id_embedding(np_id: np.ndarray) -> np.ndarray:
+    """Vector de la cara de la identificacion (128 numeros). Falla si no hay cara."""
     id_face = pick_best_face(detect_faces(np_id))
     if id_face is None:
         raise CheckError(422, "id_face_not_found", "No se detectó rostro en la identificación.")
+    return embed(np_id, id_face)
 
-    id_emb = embed(np_id, id_face)
+
+def compare_id_against_segments(
+    id_emb: np.ndarray, segments: list[dict | None], face_stats: dict, threshold_percent: float
+) -> dict:
+    """Compara la cara de la identificacion contra la mejor cara de cada tramo.
+
+    Sin tramo de frase: el porcentaje es el promedio de los tramos, pero solo es
+    match si TODOS llegan a threshold_percent: con el promedio solo, un tramo con
+    otra persona quedaria escondido (0.90 + 0.90 + 0.10 promedia 0.63 y pasaria).
+
+    Con tramo de frase (role "frase"): la INE se compara solo contra la frase,
+    donde la persona esta quieta y de frente. En los tramos de gestos se revisa
+    que sea la misma persona que leyo la frase (video contra video): asi un tramo
+    de perfil no tumba la verificacion, pero cambiar de persona si se detecta.
+    """
 
     mid = settings.sim_threshold
+    frase = next((s for s in segments if s and s.get("role") == "frase"), None)
+    if frase is not None:
+        return _compare_por_frase(id_emb, segments, frase, face_stats, threshold_percent)
     results = []
     for index, seg in enumerate(segments, start=1):
         if seg is None:
@@ -117,6 +128,8 @@ def compare_id_against_segments(
             "similarity_percent": percent,
             "is_match": percent >= threshold_percent,
             "live_score": seg["live_score"],
+            # Si la cara elegida de este tramo miraba de frente (en los gestos puede que no).
+            "frontal": seg.get("frontal"),
         })
 
     found = [r["raw_similarity"] for r in results if r["face_found"]]
@@ -146,12 +159,89 @@ def compare_id_against_segments(
     }
 
 
-async def compare_image_np_and_video_path(np1: np.ndarray, video_path: str, threshold_percent: float) -> dict:
-    """Compara la identificacion contra la cara de cada tramo del video en disco."""
+def _multiple_faces(face_stats: dict) -> dict:
+    return {
+        "detected": face_stats["multi_face_frames"] >= settings.multi_face_min_frames,
+        "max_faces_in_frame": face_stats["max_faces_in_frame"],
+        "frames": face_stats["multi_face_frames"],
+        "first_time_sec": face_stats["first_multi_face_sec"],
+    }
+
+
+def _compare_por_frase(
+    id_emb: np.ndarray, segments: list[dict | None], frase: dict, face_stats: dict, threshold_percent: float
+) -> dict:
+    mid, k = settings.sim_threshold, settings.score_k
+    frase_emb = embed(frase["crop"], frase["face"])
+    sim_ine = cosine_similarity(id_emb, frase_emb)
+    pct_ine = similarity_to_percent_sigmoid(sim_ine, mid, k)
+
+    results = []
+    for index, seg in enumerate(segments, start=1):
+        if seg is None:
+            results.append({"index": index, "role": None, "time_sec": None, "face_found": False,
+                             "raw_similarity": None, "similarity_percent": 0.0, "is_match": False,
+                             "same_person_percent": None, "live_score": None, "frontal": None})
+            continue
+        if seg is frase:
+            results.append({"index": index, "role": "frase", "time_sec": seg["time_sec"], "face_found": True,
+                            "raw_similarity": round(sim_ine, 6), "similarity_percent": pct_ine,
+                            "is_match": pct_ine >= threshold_percent, "same_person_percent": None,
+                            "live_score": seg["live_score"], "frontal": seg.get("frontal")})
+            continue
+        emb = embed(seg["crop"], seg["face"])
+        sim_misma = cosine_similarity(frase_emb, emb)
+        pct_misma = similarity_to_percent_sigmoid(sim_misma, mid, k)
+        # Contra la INE solo como referencia: en los gestos no decide.
+        sim_seg_ine = cosine_similarity(id_emb, emb)
+        results.append({"index": index, "role": seg.get("role"), "time_sec": seg["time_sec"], "face_found": True,
+                        "raw_similarity": round(sim_seg_ine, 6),
+                        "similarity_percent": similarity_to_percent_sigmoid(sim_seg_ine, mid, k),
+                        "is_match": pct_misma >= settings.same_person_percent,
+                        "same_person_percent": pct_misma, "live_score": seg["live_score"],
+                        "frontal": seg.get("frontal")})
+
+    gestos = [r for r in results if r["role"] != "frase"]
+    misma_persona = all(r["face_found"] and r["is_match"] for r in gestos)
+    coincide_ine = pct_ine >= threshold_percent
+    multiple_faces = _multiple_faces(face_stats)
+    is_match = coincide_ine and misma_persona and not multiple_faces["detected"]
+    if multiple_faces["detected"]:
+        decision = "multiple_faces"
+    elif not coincide_ine:
+        decision = "no_match"
+    elif not misma_persona:
+        decision = "person_changed"
+    else:
+        decision = "match"
+    return {
+        "decision": decision,
+        "is_match": is_match,
+        "mode": "frase",
+        # El porcentaje que se muestra es el de la INE contra la frase.
+        "similarity_percent": pct_ine,
+        "min_similarity": round(sim_ine, 6),
+        "tolerance": percent_to_similarity(threshold_percent, mid, k),
+        "threshold_percent": float(threshold_percent),
+        "id_match": coincide_ine,
+        "same_person": {
+            "passed": misma_persona,
+            "threshold_percent": settings.same_person_percent,
+            "min_percent": min((r["same_person_percent"] for r in gestos if r["same_person_percent"] is not None), default=None),
+        },
+        "segments": results,
+        "multiple_faces": multiple_faces,
+    }
+
+
+async def compare_id_and_video_path(
+    id_emb: np.ndarray, video_path: str, threshold_percent: float, ventana: tuple[float, float | None] | None = None,
+) -> dict:
+    """Compara la identificacion (ya convertida con id_embedding) contra cada tramo del video en disco."""
 
     try:
         segments, face_stats = await asyncio.wait_for(
-            asyncio.to_thread(best_faces_by_segment, video_path, segments=settings.face_segments),
+            asyncio.to_thread(best_faces_by_segment, video_path, segments=settings.face_segments, ventana=ventana),
             timeout=60,
         )
     except asyncio.TimeoutError:
@@ -171,4 +261,4 @@ async def compare_image_np_and_video_path(np1: np.ndarray, video_path: str, thre
             "No se detectó ninguna cara en el video. Prueba con mejor iluminación o rostro más cerca.",
         )
 
-    return await asyncio.to_thread(compare_id_against_segments, np1, segments, face_stats, threshold_percent)
+    return await asyncio.to_thread(compare_id_against_segments, id_emb, segments, face_stats, threshold_percent)

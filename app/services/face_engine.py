@@ -102,6 +102,31 @@ def embed(np_rgb: np.ndarray, face: Face) -> np.ndarray:
     return feat / (np.linalg.norm(feat) + 1e-12)
 
 
+# Cara de frente: nariz centrada entre los ojos y ojos nivelados, como fraccion de
+# la distancia entre ojos (0 = de frente). 0.15 de giro son unos 10-12 grados.
+MAX_GIRO_FRENTE = 0.15
+MAX_INCLINACION_FRENTE = 0.2
+
+
+def pose(row: np.ndarray) -> tuple[float, float]:
+    """(giro, inclinacion) con los 5 puntos de YuNet: ojo der., ojo izq., nariz, boca.
+
+    El giro se mide sobre la linea de los ojos y no sobre el eje x de la imagen:
+    con la cabeza ladeada, la nariz se corre en x aunque la cara este de frente.
+    """
+    ojo_d, ojo_i, nariz = row[4:6], row[6:8], row[8:10]
+    ojos = ojo_i - ojo_d
+    distancia = float(np.linalg.norm(ojos)) + 1e-6
+    centro = (ojo_d + ojo_i) / 2
+    giro = abs(float(np.dot(nariz - centro, ojos))) / distancia**2
+    return giro, abs(float(ojos[1])) / distancia
+
+
+def de_frente(row: np.ndarray) -> bool:
+    giro, inclinacion = pose(row)
+    return giro <= MAX_GIRO_FRENTE and inclinacion <= MAX_INCLINACION_FRENTE
+
+
 def pick_best_face(faces):
     if not faces:
         return None

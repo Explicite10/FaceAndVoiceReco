@@ -13,6 +13,11 @@ from app.services.face_track import TRACK_FPS
 _ENVELOPE_WIN_SEC = 0.05
 # La boca suele moverse un poco antes que el sonido; se busca el mejor desfase.
 _MAX_LAG_SEC = 0.2
+# Referencia de silencio: solo cuadros con la cabeza de frente y sin mano cerca.
+# Al girar o al alzar la mano, la medida de la boca "se mueve" aunque este quieta,
+# y eso inflaba el silencio: gente hablando de mas fallaba la proporcion.
+_GIRO_TRANQUILO = 0.6        # fraccion de gesture_turn_offset
+_MARGEN_GESTO_SEC = 0.4      # cuadros alrededor de un giro o una mano tambien se descartan
 
 
 def _envelope(audio: np.ndarray, times: np.ndarray) -> np.ndarray:
@@ -48,13 +53,40 @@ def _best_lag_correlation(a: np.ndarray, b: np.ndarray, max_lag: int) -> tuple[f
     return best_r, best_k
 
 
+def _tranquilos(times: np.ndarray, turn: np.ndarray, hands: list) -> np.ndarray:
+    """Cuadros sin gesto: cabeza de frente y ninguna mano a la vista, con un margen."""
+    movido = np.isnan(turn) | (np.abs(turn) > settings.gesture_turn_offset * _GIRO_TRANQUILO)
+    mano = np.array([bool(h) for h in hands], dtype=bool) if hands else np.zeros(len(times), dtype=bool)
+    malos = np.flatnonzero(movido | mano)
+    ok = np.ones(len(times), dtype=bool)
+    for i in malos:
+        ok &= np.abs(times - times[i]) > _MARGEN_GESTO_SEC
+    return ok
+
+
+def medir_movimiento(times: np.ndarray, ap: np.ndarray, turn: np.ndarray, hands: list, speech: np.ndarray,
+                     ventana: tuple[float, float | None] | None = None) -> tuple[float | None, float | None]:
+    """(movimiento de la boca al hablar, en silencio tranquilo).
+
+    Al hablar: si hay tramo de la frase, solo la voz dentro de ese tramo (quieto,
+    de frente, leyendo). En silencio: cuadros sin voz y sin gestos.
+    """
+    habla = speech
+    if ventana:
+        inicio, fin = ventana
+        en_frase = (times >= inicio) & (times <= (fin if fin is not None else np.inf))
+        if _mean_motion(ap, speech & en_frase) is not None:
+            habla = speech & en_frase
+    return _mean_motion(ap, habla), _mean_motion(ap, ~speech & _tranquilos(times, turn, hands))
+
+
 def _mean_motion(ap: np.ndarray, mask: np.ndarray) -> float | None:
     diffs = np.abs(np.diff(ap))
     sel = mask[1:] & mask[:-1] & ~np.isnan(diffs)
     return float(diffs[sel].mean()) if sel.sum() >= 5 else None
 
 
-def analyze_lip_sync(video_path: str, track: dict) -> dict:
+def analyze_lip_sync(video_path: str, track: dict, ventana: tuple[float, float | None] | None = None) -> dict:
     result = {
         "passed": False,
         "reason": None,
@@ -80,8 +112,7 @@ def analyze_lip_sync(video_path: str, track: dict) -> dict:
     tracked = ~np.isnan(ap)
     result["tracked_ratio"] = round(float(tracked.mean()), 3)
     speech = _speech_mask(audio, times)
-    motion_speech = _mean_motion(ap, speech)
-    motion_silence = _mean_motion(ap, ~speech)
+    motion_speech, motion_silence = medir_movimiento(times, ap, track["turn"], track["hands"], speech, ventana)
     corr, lag = _best_lag_correlation(ap, _envelope(audio, times), int(round(_MAX_LAG_SEC * TRACK_FPS)))
 
     result.update(
@@ -91,12 +122,34 @@ def analyze_lip_sync(video_path: str, track: dict) -> dict:
         lag_ms=int(round(lag * 1000 / TRACK_FPS)) if corr > -1.0 else None,
     )
 
-    if result["tracked_ratio"] < settings.lip_min_tracked_ratio:
-        result["reason"], result["reason_code"] = "no se ve la cara la mayor parte del video", "face_not_tracked"
-    elif motion_speech is None or motion_speech < settings.lip_motion_min:
-        result["reason"], result["reason_code"] = "la boca no se mueve al hablar", "lips_not_moving"
-    elif corr < settings.lip_corr_min:
-        result["reason"], result["reason_code"] = "el movimiento de la boca no coincide con la voz", "lips_out_of_sync"
-    else:
-        result["passed"] = True
+    code = lip_decision(result["tracked_ratio"], motion_speech, motion_silence, corr)
+    result["reason_code"] = code
+    result["reason"] = _REASONS.get(code)
+    result["passed"] = code is None
     return result
+
+
+_REASONS = {
+    "face_not_tracked": "no se ve la cara la mayor parte del video",
+    "lips_not_moving": "la boca no se mueve al hablar",
+    "lips_out_of_sync": "el movimiento de la boca no coincide con la voz",
+}
+
+
+def lip_decision(tracked_ratio: float, motion_speech: float | None, motion_silence: float | None, corr: float) -> str | None:
+    """Codigo de falla, o None si pasa.
+
+    La boca debe moverse al hablar en relacion a la propia persona: al menos
+    lip_motion_ratio_min veces lo que se mueve en silencio. El minimo absoluto
+    es bajo a proposito, solo para descartar una imagen quieta: el valor
+    absoluto cambia mucho con la distancia a la camara y su resolucion.
+    """
+    if tracked_ratio < settings.lip_min_tracked_ratio:
+        return "face_not_tracked"
+    if motion_speech is None or motion_speech < settings.lip_motion_min:
+        return "lips_not_moving"
+    if motion_silence is not None and motion_speech < settings.lip_motion_ratio_min * motion_silence:
+        return "lips_not_moving"
+    if corr < settings.lip_corr_min:
+        return "lips_out_of_sync"
+    return None

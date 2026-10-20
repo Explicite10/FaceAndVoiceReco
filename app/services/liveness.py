@@ -5,7 +5,8 @@ from app.services.errors import CheckError
 from app.services.lip_sync import analyze_lip_sync
 
 
-async def check_liveness(video_path: str, face_part: dict, track: dict) -> dict:
+async def check_liveness(video_path: str, face_part: dict, track: dict,
+                         ventana: tuple[float, float | None] | None = None) -> dict:
     """Prueba de vida: la cara no debe ser una pantalla/foto y la boca debe ir con la voz.
 
     Los puntajes del detector de suplantacion ya vienen calculados por tramo en el
@@ -24,7 +25,7 @@ async def check_liveness(video_path: str, face_part: dict, track: dict) -> dict:
         "segment_scores": segment_scores,
     }
 
-    lip_sync = await asyncio.to_thread(analyze_lip_sync, video_path, track)
+    lip_sync = await asyncio.to_thread(analyze_lip_sync, video_path, track, ventana)
 
     is_live = anti_spoof["passed"] and lip_sync["passed"]
     return {

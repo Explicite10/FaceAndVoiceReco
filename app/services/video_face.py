@@ -2,11 +2,24 @@ import cv2
 import numpy as np
 
 from app.services.antispoof import real_probability
-from app.services.face_engine import Face, detect_faces, pick_best_face
+from app.services.face_engine import Face, de_frente, detect_faces, pick_best_face, pose
 from app.services.image_quality import sharpness
 
 # Los candidatos se guardan reducidos para acotar memoria; SFace trabaja a 112 px.
 _MAX_STORED_SIDE = 256
+
+
+def elegir_cara(inside: list[tuple]) -> tuple:
+    """La cara de un tramo para comparar con la INE: la mas nitida de las que estan de frente.
+
+    El video incluye los gestos del reto (girar, tapar con la mano): la mas nitida
+    a secas solia salir de lado y bajaba la similitud contra la INE, que es de frente.
+    Si en el tramo nunca miro de frente, la menos girada.
+    """
+    frente = [c for c in inside if c[3]["frontal"]]
+    if frente:
+        return max(frente, key=lambda c: c[1])
+    return min(inside, key=lambda c: (c[3]["giro"], -c[1]))
 
 
 def best_faces_by_segment(
@@ -16,6 +29,7 @@ def best_faces_by_segment(
     max_frames: int = 300,
     min_face_area: int = 60 * 60,
     padding_ratio: float = 0.30,
+    ventana: tuple[float, float | None] | None = None,
 ) -> tuple[list[dict | None], dict]:
     """Divide el video en tramos de igual duracion y devuelve la cara mas nitida de cada uno.
 
@@ -28,6 +42,10 @@ def best_faces_by_segment(
 
     Tambien devuelve cuantas caras hubo por cuadro, para detectar a otra persona
     en el video (solo se usa la mas grande para comparar).
+
+    Con `ventana` (segundos en que se leyo la frase) los tramos son por tiempo:
+    los primeros `segments - 1` reparten lo que hay antes de la frase (los gestos)
+    y el ultimo es la frase. Cada tramo lleva "role": "gestos" o "frase".
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -109,20 +127,34 @@ def best_faces_by_segment(
                 score=face.score,
                 row=row,
             )
-            candidates.append((frame_index, quality, live, {"crop": crop, "face": local, "time_sec": round(time_sec, 2)}))
+            candidates.append((frame_index, quality, live, {"crop": crop, "face": local, "time_sec": round(time_sec, 2),
+                                                            "frontal": de_frente(face.row), "giro": pose(face.row)[0]}))
     finally:
         cap.release()
 
     total = frame_index
+    if ventana:
+        inicio, fin = ventana
+        fin = fin if fin is not None else float("inf")
+        n_gestos = segments - 1
+        tramos = [
+            ("gestos", [c for c in candidates if inicio * k / n_gestos <= c[3]["time_sec"] < inicio * (k + 1) / n_gestos])
+            for k in range(n_gestos)
+        ] + [("frase", [c for c in candidates if inicio <= c[3]["time_sec"] <= fin])]
+    else:
+        tramos = [
+            (None, [c for c in candidates if total * k / segments < c[0] <= total * (k + 1) / segments])
+            for k in range(segments)
+        ]
+
     result: list[dict | None] = []
-    for k in range(segments):
-        lo, hi = total * k / segments, total * (k + 1) / segments
-        inside = [c for c in candidates if lo < c[0] <= hi]
+    for role, inside in tramos:
         if not inside:
             result.append(None)
             continue
-        best = dict(max(inside, key=lambda c: c[1])[3])
+        best = dict(elegir_cara(inside)[3])
         best["live_score"] = round(float(np.mean([c[2] for c in inside])), 4)
+        best["role"] = role
         result.append(best)
 
     stats = {

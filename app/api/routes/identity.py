@@ -53,8 +53,18 @@ async def verify_identity_endpoint(
         le=100,
         description="Porcentaje minimo de similitud facial para aprobar. Si se omite: 70.",
     ),
+    frase_inicio: Optional[float] = Form(
+        None, ge=0, le=600, description="Segundo del video en que se mostro la frase (lo mide la pagina)."
+    ),
+    frase_fin: Optional[float] = Form(
+        None, ge=0, le=600, description="Segundo del video en que termino la lectura de la frase."
+    ),
 ):
     """Rostro del video vs identificacion + gestos del reto + frase hablada, en el mismo video.
+
+    Con `frase_inicio` (y opcionalmente `frase_fin`) la INE se compara solo en el tramo
+    de la frase, la voz solo se escucha ahi y en los gestos se revisa que sea la misma
+    persona. El tramo solo se usa si empieza despues del ultimo gesto encontrado.
 
     `result.approved` solo es true si ninguna validacion de `checks` fallo.
     `match_threshold_percent` fija el % minimo de similitud en cada tramo (default 70).
@@ -67,6 +77,7 @@ async def verify_identity_endpoint(
         match_threshold_percent,
         challenge_id=challenge_id,
         client=getattr(request.state, "client", None),
+        ventana_frase=(frase_inicio, frase_fin) if frase_inicio is not None else None,
     )
 
 

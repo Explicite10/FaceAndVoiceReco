@@ -96,9 +96,12 @@ def analyze_gestures(track: dict, gestures: list[str]) -> dict:
 
     turn, blink = track["turn"], track["blink"]
     has_turn, has_blink = np.any(~np.isnan(turn)), np.any(~np.isnan(blink))
+    in_order = in_order and all(s["detected"] for s in steps)
     return {
         "steps": steps,
-        "in_order": in_order and all(s["detected"] for s in steps),
+        "in_order": in_order,
+        # Momento en que termino el ultimo gesto de la cadena: la frase va despues.
+        "last_gesture_sec": round(prev, 2) if in_order else None,
         "frames": len(track["times"]),
         # Valores maximos medidos, para calibrar los umbrales.
         "max_turn_left": round(max(0.0, float(np.nanmax(turn))), 3) if has_turn else None,
