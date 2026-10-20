@@ -1077,7 +1077,13 @@
         const mime = pickMime();
         const chunks = [];
         // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida.
-        const recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
+        let recorder;
+        try {
+          recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
+        } catch {
+          // Algunos navegadores rechazan el formato o la tasa: se deja que elijan.
+          recorder = new MediaRecorder(stream);
+        }
         recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
 
         // fase: encuadre -> cuenta -> gesto -> frase -> fin
@@ -1128,7 +1134,9 @@
         }
 
         function empezarGrabacion() {
-          recorder.start();
+          // En pedazos de 1 s: el video se va juntando mientras se graba y no
+          // depende de un solo envio al final (que algunos navegadores no hacen).
+          recorder.start(1000);
           inicioRec = performance.now();
           $("rec").hidden = false;
           stage.classList.remove("encuadre", "con-rostro");
@@ -1192,26 +1200,66 @@
           fase = "fin";
           clearTimeout(fraseTimer);
           $("btnListo").hidden = true;
-          $("pasoN").textContent = "Guardando…";
+          $("pasoN").textContent = "Terminando grabación…";
           items.forEach((li) => { li.className = "done"; });
+          // El analisis pide un minimo de duracion: si se termino antes, se graba hasta completarlo.
           const falta = MIN_DUR * 1000 - (performance.now() - inicioRec);
-          setTimeout(() => { if (recorder.state !== "inactive") recorder.stop(); }, Math.max(0, falta));
+          setTimeout(() => {
+            try {
+              if (recorder.state !== "inactive") {
+                recorder.requestData();  // lo que tenga pendiente, por si stop no lo entrega
+                recorder.stop();
+              }
+            } catch { /* ya se habia detenido */ }
+            // Si el navegador no avisa que termino (onstop), se arma con lo que ya se junto.
+            vigia = setTimeout(() => {
+              try { if (recorder.state !== "inactive") recorder.requestData(); } catch { /* sin datos pendientes */ }
+              setTimeout(finalizar, 500);
+            }, 3000);
+          }, Math.max(0, falta));
         }
         $("btnListo").onclick = terminar;
 
-        recorder.onstop = () => {
+        // Una sola vez, venga de onstop, del vigia o de un error de la grabadora.
+        let finalizado = false, vigia = null;
+        function finalizar() {
+          if (finalizado) return;
+          finalizado = true;
+          clearTimeout(vigia);
+          fase = "fin";
+          clearTimeout(fraseTimer);
           $("rec").hidden = true;
           $("fraseBox").hidden = true;
-          videoMime = mime;
-          videoBlob = new Blob(chunks, { type: mime || "video/webm" });
-          tiempos = { fraseInicio, fraseFin };
+          $("btnListo").hidden = true;
           grabando = false;
+          $("btnRepetir").hidden = false;
+          if (!chunks.length) {
+            $("pasoN").textContent = "No se guardó la grabación";
+            mostrarPaso("rostro", "No pudimos guardar el video", "Presiona Grabar de nuevo para intentarlo otra vez.");
+            refreshSend();
+            return;
+          }
+          videoMime = recorder.mimeType || mime;
+          videoBlob = new Blob(chunks, { type: videoMime || "video/webm" });
+          tiempos = { fraseInicio, fraseFin };
           mostrarGrabacion(URL.createObjectURL(videoBlob));
           $("pasoN").textContent = "Grabación lista";
           mostrarPaso("listo", "Prueba de vida grabada", "Revisa el video si quieres y presiona Verificar identidad.");
-          $("btnRepetir").hidden = false;
           refreshSend();
+        }
+        recorder.onstop = finalizar;
+        recorder.onerror = () => {
+          $("aviso").textContent = "La grabación se interrumpió. Presiona Grabar de nuevo para intentarlo otra vez.";
+          finalizar();
         };
+        // Si la camara se corta a media grabacion (otra app la toma, se bloquea el telefono...).
+        stream.getVideoTracks().forEach((t) => {
+          t.onended = () => {
+            if (fase === "fin" || !inicioRec) return;
+            $("aviso").textContent = "La cámara se desconectó durante la grabación. Presiona Grabar de nuevo.";
+            terminar();
+          };
+        });
 
         function tick(now) {
           if (fase === "fin") return;
