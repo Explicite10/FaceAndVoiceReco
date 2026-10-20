@@ -75,7 +75,8 @@ async def panel(request: Request):
     if not acceso.es_admin(request):
         return _ir("/login")
     url = _url_qr(request, await db.qr_token())
-    qr_svg = segno.make(url, error="m").svg_inline(scale=8, border=2, dark="#072146", light="#ffffff")
+    # omitsize: solo viewBox, sin ancho/alto fijos; asi el CSS lo escala sin deformarlo.
+    qr_svg = segno.make(url, error="m").svg_inline(omitsize=True, border=2, dark="#072146", light="#ffffff")
     return templates.TemplateResponse("panel.html", {
         "request": request,
         "qr_svg": qr_svg,
