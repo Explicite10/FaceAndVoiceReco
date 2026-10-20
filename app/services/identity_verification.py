@@ -102,8 +102,8 @@ async def analyze_video(
     ventana = ventana_valida(ventana_frase, gestures)
     face = await _run_part(_compare_face(id_emb, video_path, match_threshold_percent, ventana))
     voice = await _run_part(verify_voice_from_path(video_path, expected_phrase, ventana))
-    # Los labios se miden en todo el video: el silencio de los gestos es su referencia.
-    liveness = await _run_part(check_liveness(video_path, face, track))
+    # Labios: el habla se mide en la frase y el silencio, en los cuadros sin gestos.
+    liveness = await _run_part(check_liveness(video_path, face, track, ventana))
 
     return build_report(
         face=face,
