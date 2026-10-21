@@ -10,7 +10,7 @@
 import asyncio
 
 import segno
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -83,8 +83,18 @@ async def panel(request: Request):
         "qr_svg": qr_svg,
         "qr_url": url,
         "resumen": await db.resumen(),
+        # Primera pagina de la tabla ya en el HTML: aparece sin esperar otra peticion.
+        "sesiones": await db.sesiones_pagina(1),
         "persistente": db.enabled(),
     })
+
+
+@router.get("/panel/sesiones")
+async def panel_sesiones(request: Request, pagina: int = Query(1, ge=1, le=1_000_000)):
+    """Una pagina de la tabla de sesiones (10 por pagina, la mas reciente primero)."""
+    if not acceso.es_admin(request):
+        return JSONResponse({"detail": "No autorizado"}, status_code=401)
+    return await db.sesiones_pagina(pagina)
 
 
 @router.get("/panel/datos")

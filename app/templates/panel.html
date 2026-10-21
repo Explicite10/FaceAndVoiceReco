@@ -99,13 +99,17 @@
             </figure>
           </div>
 
-          <h3 class="table-title">Últimas sesiones</h3>
-          <div class="table-wrap">
+          <div class="tabla-head">
+            <h3 class="table-title">Sesiones</h3>
+            <span class="tabla-conteo" id="tablaConteo"></span>
+          </div>
+          <div class="table-wrap" id="tablaWrap">
             <table class="tabla-sesiones">
               <thead><tr><th>Escaneo</th><th>Dónde se quedó</th><th>Pruebas</th><th>Tipo</th><th class="col-accion"><span class="sr-only">Acciones</span></th></tr></thead>
               <tbody id="recientes"></tbody>
             </table>
           </div>
+          <nav class="paginado" id="paginado" aria-label="Páginas de sesiones" hidden></nav>
         </section>
       </div>
     </main>
@@ -135,6 +139,7 @@
             integrity="sha384-Hf0cGsweCbozkRP14s5KIue6STJYKaoipB/i1gTdbX+umKD59qA/Szk42FPMuKtB" crossorigin="anonymous"></script>
     <script src="/static/resultado.js"></script>
     <script id="datosIniciales" type="application/json">{{ resumen | tojson }}</script>
+    <script id="sesionesIniciales" type="application/json">{{ sesiones | tojson }}</script>
     <script>
       const $ = (id) => document.getElementById(id);
       const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
@@ -287,14 +292,74 @@
         $("nPersonas").textContent = r.personas;
         $("nAprobadas").textContent = r.aprobadas;
         $("nRechazadas").textContent = r.rechazadas;
-        const filas = r.recientes.map((s) =>
+        pintarGraficas(r);
+      }
+      pintar(JSON.parse($("datosIniciales").textContent));
+
+      // ---------------------------------------------------------------- tabla paginada
+      // El servidor entrega 10 sesiones por pagina (la mas reciente primero). El refresco
+      // automatico vuelve a pedir la pagina que se esta viendo, sin regresar a la primera.
+      let pagina = 1;
+      let pidiendoPagina = 0;
+
+      function pintarTabla(p) {
+        pagina = p.pagina;
+        const filas = p.filas.map((s) =>
           `<tr><td data-label="Escaneo">${hora(s.creada)}</td><td data-label="Dónde se quedó">${ETAPA[s.etapa] || ""}</td>
            <td data-label="Pruebas">${s.pruebas}</td><td data-label="Tipo">${esc(TIPO[s.ultimo_tipo] || "—")}</td>
            <td class="col-accion"><button class="btn btn-sm" type="button" data-sesion="${esc(s.id)}">Ver registro</button></td></tr>`);
         $("recientes").innerHTML = filas.join("") || '<tr><td class="empty-row" colspan="5">Aún nadie ha escaneado el código.</td></tr>';
-        pintarGraficas(r);
+        const desde = p.total ? (p.pagina - 1) * p.por_pagina + 1 : 0;
+        const hasta = Math.min(p.pagina * p.por_pagina, p.total);
+        $("tablaConteo").textContent = p.total > p.por_pagina ? `Mostrando ${desde}–${hasta} de ${p.total}`
+          : p.total ? `${p.total} ${p.total === 1 ? "sesión" : "sesiones"}` : "";
+        pintarPaginado(p);
       }
-      pintar(JSON.parse($("datosIniciales").textContent));
+
+      // Numeros de pagina a mostrar: primera, ultima y las vecinas de la actual, con "…" en los huecos.
+      function numerosDePagina(actual, total) {
+        const set = new Set([1, total, actual - 1, actual, actual + 1].filter((n) => n >= 1 && n <= total));
+        const nums = [...set].sort((a, b) => a - b), out = [];
+        nums.forEach((n, i) => { if (i && n - nums[i - 1] > 1) out.push("…"); out.push(n); });
+        return out;
+      }
+
+      function pintarPaginado(p) {
+        const nav = $("paginado");
+        nav.hidden = p.paginas <= 1;
+        if (nav.hidden) { nav.innerHTML = ""; return; }
+        const flecha = (d) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+        const numeros = numerosDePagina(p.pagina, p.paginas).map((n) => n === "…"
+          ? '<span class="pag-hueco" aria-hidden="true">…</span>'
+          : `<button type="button" class="pag-num" data-pagina="${n}" ${n === p.pagina ? 'aria-current="page"' : ""}
+               aria-label="Página ${n}">${n}</button>`).join("");
+        nav.innerHTML = `
+          <button type="button" class="pag-btn" data-pagina="${p.pagina - 1}" ${p.pagina === 1 ? "disabled" : ""} aria-label="Página anterior">
+            ${flecha("M15 18l-6-6 6-6")}<span>Anterior</span></button>
+          <div class="pag-numeros">${numeros}</div>
+          <span class="pag-actual" aria-live="polite">Página ${p.pagina} de ${p.paginas}</span>
+          <button type="button" class="pag-btn" data-pagina="${p.pagina + 1}" ${p.pagina === p.paginas ? "disabled" : ""} aria-label="Página siguiente">
+            <span>Siguiente</span>${flecha("M9 18l6-6-6-6")}</button>`;
+      }
+
+      async function irAPagina(n, { desplazar = false, silencioso = false } = {}) {
+        const yo = ++pidiendoPagina;
+        if (!silencioso) $("tablaWrap").classList.add("cargando");  // el refresco de fondo no atenua la tabla
+        try {
+          const res = await fetch(`/panel/sesiones?pagina=${n}`, { cache: "no-store" });
+          if (res.status === 401) { location.href = "/login"; return; }
+          if (!res.ok || yo !== pidiendoPagina) return;  // llego tarde: ya se pidio otra pagina
+          pintarTabla(await res.json());
+          if (desplazar) document.querySelector(".tabla-head").scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch { /* sin red: se queda la pagina actual */ }
+        finally { if (yo === pidiendoPagina) $("tablaWrap").classList.remove("cargando"); }
+      }
+
+      $("paginado").addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-pagina]");
+        if (b && !b.disabled) irAPagina(Number(b.dataset.pagina), { desplazar: true });
+      });
+      pintarTabla(JSON.parse($("sesionesIniciales").textContent));
 
       // ---------------------------------------------------------------- modal "Ver registro"
       const modal = $("registro");
@@ -391,6 +456,7 @@
           if (res.status === 401) { location.href = "/login"; return; }
           if (res.ok) pintar(await res.json());
         } catch { /* sin red: se reintenta en el siguiente ciclo */ }
+        irAPagina(pagina, { silencioso: true });
       }
       setInterval(actualizar, 10000);
 

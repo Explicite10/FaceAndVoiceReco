@@ -218,3 +218,35 @@ body:has(dialog.modal[open]) { overflow: hidden; }
   .modal-head h2 { font-size: 17px; }
 }
 @media (prefers-reduced-motion: reduce) { dialog.modal[open] { animation: none; } .spinner-sm { animation: none; } }
+
+/* ---------- Tabla de sesiones: encabezado y paginado ---------- */
+.tabla-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 22px; scroll-margin-top: 16px; }
+.tabla-head .table-title { margin: 0; }
+.tabla-conteo { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.table-wrap.cargando { opacity: .55; transition: opacity .15s; pointer-events: none; }
+
+.paginado { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.pag-numeros { display: flex; align-items: center; gap: 4px; }
+.pag-btn, .pag-num {
+  appearance: none; font: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--navy); border-radius: 8px; transition: background .15s, border-color .15s;
+}
+.pag-btn { padding: 8px 14px; font-size: 14px; font-weight: 600; }
+.pag-num { min-width: 38px; height: 38px; padding: 0 8px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pag-btn:hover:not(:disabled), .pag-num:hover:not([aria-current]) { background: var(--tint); border-color: var(--blue-mid); }
+.pag-btn:focus-visible, .pag-num:focus-visible { outline: 3px solid rgba(25,115,184,.35); outline-offset: 2px; }
+.pag-btn:disabled { opacity: .4; cursor: not-allowed; }
+.pag-num[aria-current="page"] { background: var(--blue-mid); border-color: var(--blue-mid); color: #fff; cursor: default; }
+.pag-hueco { min-width: 22px; text-align: center; color: var(--faint); }
+.pag-actual { display: none; color: var(--muted); font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+
+/* En celular: Anterior | Pagina X de Y | Siguiente, botones grandes para el dedo. */
+@media (max-width: 640px) {
+  .paginado { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
+  .paginado .pag-btn:first-child { justify-self: start; }
+  .paginado .pag-btn:last-child { justify-self: end; }
+  .pag-numeros { display: none; }
+  .pag-actual { display: block; text-align: center; font-size: 13px; }
+  .pag-btn { padding: 10px 12px; min-height: 44px; max-width: 100%; }
+}
+@media (max-width: 360px) { .pag-btn span { display: none; } }

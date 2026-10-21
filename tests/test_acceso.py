@@ -147,7 +147,7 @@ def test_embudo_motivos_y_actividad():
     assert r["resultado"] == {"aprobadas": 1, "no_aprobadas": 1, "abandonaron": 2}
     assert r["motivos"][0] == {"codigo": "blink_not_detected", "n": 2}
     assert sum(a["escaneos"] for a in r["actividad"]) == 4 and sum(a["pruebas"] for a in r["actividad"]) == 3
-    etapas = sorted(s["etapa"] for s in r["recientes"])
+    etapas = sorted(s["etapa"] for s in asyncio.run(db.sesiones_pagina(1))["filas"])
     assert etapas == ["aprobada", "escaneo", "inicio", "no_aprobada"]
     assert solo_escaneo  # (solo para nombrar la sesion que se quedo en el escaneo)
 
@@ -179,7 +179,7 @@ def test_ver_registro_de_una_sesion():
     assert [i["aprobado"] for i in r["intentos"]] == [True, False]  # el mas reciente primero
     assert r["intentos"][1]["detalle"]["details"]["voice"]["phrase_match"]["match_percent"] == 41.0
     # La tabla del panel trae el id para abrir el registro.
-    assert c.get("/panel/datos").json()["recientes"][0]["id"] == sid
+    assert c.get("/panel/sesiones").json()["filas"][0]["id"] == sid
 
 
 def test_registro_con_pruebas_anteriores_al_detalle():
@@ -187,6 +187,32 @@ def test_registro_con_pruebas_anteriores_al_detalle():
     db._mem_sesiones[sid].update(pruebas=2, ultima_prueba=db._ahora(), ultimo_aprobado=False)
     r = asyncio.run(db.detalle_sesion(sid))
     assert r["intentos"] == [] and r["sin_detalle"] == 2
+
+
+def test_tabla_paginada_de_10_en_10():
+    from datetime import timedelta
+    ids = []
+    for n in range(23):
+        sid = asyncio.run(db.crear_sesion())
+        db._mem_sesiones[sid]["creada"] = db._ahora() + timedelta(seconds=n)  # la ultima es la mas reciente
+        ids.append(sid)
+
+    c = cliente()
+    assert c.get("/panel/sesiones").status_code == 401  # solo el admin
+    login(c)
+    p1 = c.get("/panel/sesiones").json()
+    assert (p1["total"], p1["paginas"], p1["pagina"], len(p1["filas"])) == (23, 3, 1, 10)
+    assert [f["id"] for f in p1["filas"]] == ids[::-1][:10]  # mas reciente primero
+    p3 = c.get("/panel/sesiones?pagina=3").json()
+    assert (p3["pagina"], len(p3["filas"])) == (3, 3) and p3["filas"][-1]["id"] == ids[0]
+    assert c.get("/panel/sesiones?pagina=99").json()["pagina"] == 3  # fuera de rango: la ultima
+    assert c.get("/panel/sesiones?pagina=0").status_code == 422
+    assert "sesionesIniciales" in c.get("/panel").text
+
+
+def test_tabla_sin_sesiones():
+    p = asyncio.run(db.sesiones_pagina(5))
+    assert (p["total"], p["paginas"], p["pagina"], p["filas"]) == (0, 1, 1, [])
 
 
 def test_pedir_reto_cuenta_como_inicio():

@@ -228,14 +228,13 @@ def _momentos_de_pruebas(sesiones: list, intentos: list) -> list[datetime]:
     return momentos
 
 
-def _armar(sesiones: list, intentos: list, ultimas: int) -> dict:
+def _armar(sesiones: list, intentos: list) -> dict:
     con_prueba = [s for s in sesiones if s["pruebas"] > 0]
     iniciaron = [s for s in sesiones if s["retos"] > 0 or s["pruebas"] > 0]
     aprobadas = sum(1 for s in con_prueba if s["ultimo_aprobado"])
     rechazadas = sum(1 for s in con_prueba if s["ultimo_aprobado"] is False)
     # Motivos: de los intentos no aprobados, cuantas veces fallo cada check.
     motivos = Counter(f for i in intentos if not i["aprobado"] for f in set(i["fallos"]))
-    recientes = sorted(sesiones, key=lambda s: s["creada"], reverse=True)[:ultimas]
     return {
         "sesiones": len(sesiones),
         "personas": len(con_prueba),
@@ -259,19 +258,47 @@ def _armar(sesiones: list, intentos: list, ultimas: int) -> dict:
         "motivos_desde": min((i["creado"] for i in intentos), default=_ahora()).isoformat(),
         # Hay pruebas sin detalle (de antes de la tabla intentos): sus motivos no se conocen.
         "motivos_parciales": sum(s["pruebas"] for s in sesiones) > len(intentos),
-        "recientes": [_fila(s) for s in recientes],
     }
 
 
-async def resumen(ultimas: int = 15) -> dict:
+async def resumen() -> dict:
     """Conteos, embudo, motivos y actividad para el panel (sin ids ni datos personales)."""
     if _pool is None:
-        return _armar(list(_mem_sesiones.values()), list(_mem_intentos), ultimas)
+        return _armar(list(_mem_sesiones.values()), list(_mem_intentos))
     async with _pool.acquire() as conn:
         sesiones = await conn.fetch(
             "SELECT id, creada, pruebas, retos, ultima_prueba, ultimo_tipo, ultimo_aprobado FROM sesiones")
         intentos = await conn.fetch("SELECT sesion_id, creado, aprobado, fallos FROM intentos")
-    return _armar([dict(s) for s in sesiones], [dict(i) for i in intentos], ultimas)
+    return _armar([dict(s) for s in sesiones], [dict(i) for i in intentos])
+
+
+POR_PAGINA = 10
+
+
+async def sesiones_pagina(pagina: int = 1, por_pagina: int = POR_PAGINA) -> dict:
+    """Una pagina de la tabla del panel: las sesiones mas recientes primero.
+
+    Una pagina fuera de rango se ajusta a la primera o la ultima (p. ej. si se
+    borraron sesiones mientras alguien veia la ultima pagina).
+    """
+    if _pool is None:
+        todas = sorted(_mem_sesiones.values(), key=lambda s: (s["creada"], s["id"]), reverse=True)
+        total = len(todas)
+    else:
+        async with _pool.acquire() as conn:
+            total = await conn.fetchval("SELECT count(*) FROM sesiones")
+    paginas = max(1, -(-total // por_pagina))
+    pagina = min(max(1, pagina), paginas)
+    desde = (pagina - 1) * por_pagina
+    if _pool is None:
+        filas = todas[desde:desde + por_pagina]
+    else:
+        async with _pool.acquire() as conn:
+            filas = await conn.fetch(
+                "SELECT id, creada, pruebas, retos, ultimo_tipo, ultimo_aprobado FROM sesiones "
+                "ORDER BY creada DESC, id DESC LIMIT $1 OFFSET $2", por_pagina, desde)
+    return {"total": total, "pagina": pagina, "paginas": paginas, "por_pagina": por_pagina,
+            "filas": [_fila(s) for s in filas]}
 
 
 def _intento(i) -> dict:
