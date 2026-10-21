@@ -162,6 +162,33 @@ def test_pruebas_anteriores_a_intentos_siguen_contando():
     assert r["embudo"]["verificaron"] == 1 and r["motivos"] == [] and r["motivos_parciales"]
 
 
+def test_ver_registro_de_una_sesion():
+    sid = asyncio.run(db.crear_sesion())
+    asyncio.run(db.registrar_reto(sid))
+    detalle = {"result": {"approved": False}, "checks": {"voice": {"phrase_match": {"status": "failed", "code": "phrase_mismatch"}}},
+               "details": {"voice": {"phrase_match": {"match_percent": 41.0}}}, "processing_time_ms": 8000}
+    asyncio.run(db.registrar_prueba(sid, "video", False, ["phrase_mismatch"], 8000, detalle))
+    asyncio.run(db.registrar_prueba(sid, "video", True, [], 7000, {**detalle, "result": {"approved": True}}))
+
+    c = cliente()
+    assert c.get(f"/panel/sesion/{sid}").status_code == 401  # solo el admin
+    login(c)
+    assert c.get("/panel/sesion/no-existe").status_code == 404
+    r = c.get(f"/panel/sesion/{sid}").json()
+    assert r["sesion"]["etapa"] == "aprobada" and r["sesion"]["retos"] == 1 and r["sin_detalle"] == 0
+    assert [i["aprobado"] for i in r["intentos"]] == [True, False]  # el mas reciente primero
+    assert r["intentos"][1]["detalle"]["details"]["voice"]["phrase_match"]["match_percent"] == 41.0
+    # La tabla del panel trae el id para abrir el registro.
+    assert c.get("/panel/datos").json()["recientes"][0]["id"] == sid
+
+
+def test_registro_con_pruebas_anteriores_al_detalle():
+    sid = asyncio.run(db.crear_sesion())
+    db._mem_sesiones[sid].update(pruebas=2, ultima_prueba=db._ahora(), ultimo_aprobado=False)
+    r = asyncio.run(db.detalle_sesion(sid))
+    assert r["intentos"] == [] and r["sin_detalle"] == 2
+
+
 def test_pedir_reto_cuenta_como_inicio():
     c = cliente()
     c.get(f"/p/{asyncio.run(db.qr_token())}")

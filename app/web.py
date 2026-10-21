@@ -2,7 +2,8 @@
 
 /            -> /panel si hay sesion de admin; si no, /login
 /login       -> unica cuenta (ADMIN_EMAIL); limitado por IP y en total
-/panel       -> QR con instrucciones y conteo de sesiones (solo admin)
+/panel       -> QR con instrucciones, graficas y sesiones (solo admin)
+/panel/sesion/<id> -> una sesion con el resultado de cada intento (solo admin)
 /p/<token>   -> lo que abre el QR: crea la sesion, pone la cookie y manda a /prueba
 /prueba      -> la prueba de vida (solo con QR vigente o sesion de admin)
 """
@@ -91,6 +92,17 @@ async def panel_datos(request: Request):
     if not acceso.es_admin(request):
         return JSONResponse({"detail": "No autorizado"}, status_code=401)
     return await db.resumen()
+
+
+@router.get("/panel/sesion/{sid}")
+async def panel_sesion(request: Request, sid: str):
+    """Una sesion con sus intentos y el resultado de cada uno (modal "Ver registro")."""
+    if not acceso.es_admin(request):
+        return JSONResponse({"detail": "No autorizado"}, status_code=401)
+    datos = await db.detalle_sesion(sid) if len(sid) <= 64 else None
+    if datos is None:
+        return JSONResponse({"detail": "No encontrado"}, status_code=404)
+    return datos
 
 
 @router.post("/panel/nuevo-qr")

@@ -53,8 +53,11 @@ async def _registrar(request: Request, tipo: str, reporte: dict) -> None:
         return
     fallos = [c["code"] for grupo in reporte.get("checks", {}).values() for c in grupo.values()
               if c.get("status") == "failed" and c.get("code")]
+    # Lo mismo que vio la persona (checks y porcentajes) para "Ver registro" del panel;
+    # sin errores tecnicos internos ni metadatos.
+    detalle = {k: reporte.get(k) for k in ("result", "checks", "details", "processing_time_ms")}
     await db.registrar_prueba(sid, tipo, bool(reporte["result"]["approved"]), fallos,
-                              reporte.get("processing_time_ms"))
+                              reporte.get("processing_time_ms"), detalle)
 
 
 @router.post(

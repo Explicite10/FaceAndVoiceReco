@@ -134,3 +134,87 @@ td { padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: now
 .chart { min-height: 280px; }
 .table-title { margin: 22px 0 0; font-size: 15px; color: var(--navy); }
 .pill.mid { background: #fff3e8; color: #a8530f; }
+
+/* ---------- Tabla: accion por fila ---------- */
+.table-wrap { position: relative; }  /* contiene al .sr-only absoluto: no ensancha la pagina */
+.col-accion { text-align: right; width: 1%; }
+
+/* En celular cada sesion es una tarjeta: el boton queda a la vista sin deslizar de lado. */
+@media (max-width: 640px) {
+  .tabla-sesiones thead { display: none; }
+  .tabla-sesiones, .tabla-sesiones tbody { display: block; }
+  .tabla-sesiones tr {
+    display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .tabla-sesiones td { padding: 0; border: 0; white-space: normal; }
+  .tabla-sesiones td[data-label="Escaneo"] { font-weight: 700; color: var(--navy); }
+  .tabla-sesiones td[data-label="Pruebas"], .tabla-sesiones td[data-label="Tipo"] { color: var(--muted); font-size: 13px; }
+  .tabla-sesiones td[data-label="Pruebas"]::before { content: "Pruebas: "; }
+  .tabla-sesiones td[data-label="Tipo"] { text-align: right; }
+  .tabla-sesiones .col-accion { grid-column: 1 / -1; width: auto; text-align: left; }
+  .tabla-sesiones .col-accion .btn { width: 100%; padding: 9px 12px; }
+  .tabla-sesiones .empty-row { display: block; }
+}
+.btn-sm { padding: 6px 12px; font-size: 13px; border-radius: 7px; white-space: nowrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Modal "Ver registro" ---------- */
+dialog.modal {
+  padding: 0; border: 0; border-radius: 16px; background: var(--surface); color: var(--text);
+  width: min(780px, calc(100vw - 32px)); max-height: calc(100dvh - 48px);
+  box-shadow: 0 30px 80px -20px rgba(7,33,70,.55);
+}
+dialog.modal[open] { animation: modal-entra .18s ease-out; }
+dialog.modal::backdrop { background: rgba(7,33,70,.55); backdrop-filter: blur(3px); }
+/* Solo movimiento, sin opacidad: si la animacion se pausara, el modal igual se ve completo. */
+@keyframes modal-entra { from { transform: translateY(14px) scale(.98); } }
+body:has(dialog.modal[open]) { overflow: hidden; }
+.modal-card { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); }
+.modal-head {
+  display: flex; align-items: flex-start; gap: 12px; padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.modal-titulos { flex: 1; min-width: 0; display: grid; gap: 6px; justify-items: start; }
+.modal-eyebrow { margin: 0; color: var(--blue-mid); font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.modal-head h2 { margin: 0; font-size: 19px; color: var(--navy); line-height: 1.3; }
+.icon-btn {
+  appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer;
+  width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; flex: none;
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--navy); }
+.icon-btn:focus-visible { outline: 3px solid rgba(25,115,184,.35); outline-offset: 2px; }
+.modal-body { overflow-y: auto; padding: 18px 20px 24px; overscroll-behavior: contain; }
+
+.reg-facts { margin: 0 0 16px; display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 620px) { .reg-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.reg-facts > div { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); min-width: 0; }
+.reg-facts dt { color: var(--muted); font-size: 12px; font-weight: 600; }
+.reg-facts dd { margin: 2px 0 0; color: var(--navy); font-weight: 700; font-size: 15px; }
+
+.seg { display: flex; gap: 6px; padding: 4px; margin: 0 0 14px; border-radius: 10px; background: var(--surface-2);
+  border: 1px solid var(--border); overflow-x: auto; scrollbar-width: thin; }
+.seg button {
+  appearance: none; border: 0; background: transparent; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--muted);
+  padding: 8px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px;
+}
+.seg button[aria-selected="true"] { background: var(--surface); color: var(--navy); box-shadow: 0 1px 3px rgba(7,33,70,.12); }
+.seg-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--faint); }
+.seg-dot.ok { background: var(--success-solid); } .seg-dot.bad { background: var(--danger-solid); }
+
+.modal-nota { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: var(--tint); color: var(--navy); font-size: 14px; }
+.modal-vacio { display: grid; gap: 4px; text-align: center; padding: 28px 12px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); }
+.modal-vacio b { color: var(--navy); font-size: 15px; }
+.modal-cargando { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 32px 12px; color: var(--muted); }
+.spinner-sm { width: 22px; height: 22px; border-radius: 999px; border: 3px solid var(--tint-2); border-top-color: var(--blue-mid); animation: girar .8s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+
+/* En celular: el modal ocupa toda la pantalla, con el encabezado fijo arriba. */
+@media (max-width: 640px) {
+  dialog.modal { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+  .modal-card { height: 100dvh; max-height: 100dvh; }
+  .modal-head { padding: 14px 16px 12px; }
+  .modal-body { padding: 14px 16px 24px; }
+  .modal-head h2 { font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) { dialog.modal[open] { animation: none; } .spinner-sm { animation: none; } }

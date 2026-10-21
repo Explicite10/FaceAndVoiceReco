@@ -8,6 +8,7 @@ contar cuantas personas hicieron la prueba y en que paso se quedaron.
 Sin DATABASE_URL todo queda en memoria (para desarrollo): se pierde al reiniciar.
 Las tablas y columnas se crean al arrancar si no existen.
 """
+import json
 import logging
 import secrets
 from collections import Counter
@@ -50,6 +51,9 @@ CREATE TABLE IF NOT EXISTS intentos (
     duracion_ms integer
 );
 CREATE INDEX IF NOT EXISTS intentos_creado ON intentos (creado);
+CREATE INDEX IF NOT EXISTS intentos_sesion ON intentos (sesion_id, creado);
+-- Lo que vio la persona al terminar (checks y porcentajes), para "Ver registro" del panel.
+ALTER TABLE intentos ADD COLUMN IF NOT EXISTS detalle jsonb;
 """
 
 # Bloques de la grafica de actividad.
@@ -140,8 +144,10 @@ async def registrar_reto(sid: str) -> None:
 
 
 async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
-                           fallos: list[str] | None = None, duracion_ms: int | None = None) -> None:
-    """Suma una prueba terminada. `tipo`: "video" o "foto"; `fallos`: codigos de los checks que fallaron."""
+                           fallos: list[str] | None = None, duracion_ms: int | None = None,
+                           detalle: dict | None = None) -> None:
+    """Suma una prueba terminada. `tipo`: "video" o "foto"; `fallos`: codigos de los checks que
+    fallaron; `detalle`: el resultado que vio la persona (checks y porcentajes), para el panel."""
     fallos = list(fallos or [])
     if _pool is None:
         s = _mem_sesiones.get(sid)
@@ -150,7 +156,7 @@ async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
             s["aprobadas"] += int(aprobada)
             s.update(ultima_prueba=_ahora(), ultimo_tipo=tipo, ultimo_aprobado=aprobada)
             _mem_intentos.append({"sesion_id": sid, "creado": _ahora(), "tipo": tipo, "aprobado": aprobada,
-                                  "fallos": fallos, "duracion_ms": duracion_ms})
+                                  "fallos": fallos, "duracion_ms": duracion_ms, "detalle": detalle})
         return
     async with _pool.acquire() as conn:
         async with conn.transaction():
@@ -161,8 +167,9 @@ async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
             )
             if n.endswith(" 1"):
                 await conn.execute(
-                    "INSERT INTO intentos (sesion_id, tipo, aprobado, fallos, duracion_ms) VALUES ($1, $2, $3, $4, $5)",
-                    sid, tipo, aprobada, fallos, duracion_ms,
+                    "INSERT INTO intentos (sesion_id, tipo, aprobado, fallos, duracion_ms, detalle) "
+                    "VALUES ($1, $2, $3, $4, $5, $6::jsonb)",
+                    sid, tipo, aprobada, fallos, duracion_ms, json.dumps(detalle) if detalle is not None else None,
                 )
 
 
@@ -177,6 +184,8 @@ def _etapa(s) -> str:
 
 def _fila(s) -> dict:
     return {
+        # Solo lo ve el admin (para "Ver registro"); no sirve para entrar: la cookie va firmada.
+        "id": s["id"],
         "creada": s["creada"].isoformat(),
         "pruebas": s["pruebas"],
         "ultimo_tipo": s["ultimo_tipo"],
@@ -263,3 +272,46 @@ async def resumen(ultimas: int = 15) -> dict:
             "SELECT id, creada, pruebas, retos, ultima_prueba, ultimo_tipo, ultimo_aprobado FROM sesiones")
         intentos = await conn.fetch("SELECT sesion_id, creado, aprobado, fallos FROM intentos")
     return _armar([dict(s) for s in sesiones], [dict(i) for i in intentos], ultimas)
+
+
+def _intento(i) -> dict:
+    detalle = i["detalle"]
+    if isinstance(detalle, str):  # asyncpg entrega jsonb como texto
+        detalle = json.loads(detalle)
+    return {
+        "creado": i["creado"].isoformat(),
+        "tipo": i["tipo"],
+        "aprobado": i["aprobado"],
+        "fallos": list(i["fallos"] or []),
+        "duracion_ms": i["duracion_ms"],
+        "detalle": detalle,
+    }
+
+
+async def detalle_sesion(sid: str) -> dict | None:
+    """Una sesion con todos sus intentos (el mas reciente primero), para "Ver registro"."""
+    if _pool is None:
+        s = _mem_sesiones.get(sid)
+        if s is None:
+            return None
+        intentos = sorted((i for i in _mem_intentos if i["sesion_id"] == sid), key=lambda i: i["creado"], reverse=True)
+    else:
+        async with _pool.acquire() as conn:
+            s = await conn.fetchrow(
+                "SELECT id, creada, pruebas, retos, ultima_prueba, ultimo_tipo, ultimo_aprobado FROM sesiones WHERE id = $1",
+                sid)
+            if s is None:
+                return None
+            intentos = await conn.fetch(
+                "SELECT creado, tipo, aprobado, fallos, duracion_ms, detalle FROM intentos "
+                "WHERE sesion_id = $1 ORDER BY creado DESC", sid)
+    return {
+        "sesion": {
+            **_fila(s),
+            "retos": s["retos"],
+            "ultima_prueba": s["ultima_prueba"].isoformat() if s["ultima_prueba"] else None,
+        },
+        "intentos": [_intento(i) for i in intentos],
+        # Pruebas de antes de que se guardara el detalle por intento.
+        "sin_detalle": max(0, s["pruebas"] - len(intentos)),
+    }
