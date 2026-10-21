@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -13,6 +14,7 @@ from app.services.identity_verification import verify_identity
 from app.services.photo_verification import verify_photo
 
 router = APIRouter(tags=["Identity"])
+logger = logging.getLogger("uvicorn.error")
 
 # Analisis simultaneos: cada uno ocupa varios nucleos un buen rato. Los demas
 # esperan su turno; si tardan demasiado, se les pide intentar despues.
@@ -31,6 +33,17 @@ async def _con_turno(coro):
         return await coro
     finally:
         _turnos.release()
+
+
+def _diagnosticar_voz(reporte: dict, diag: str | None) -> None:
+    """Si la voz fallo, deja en el log el error exacto del audio y los datos tecnicos del
+    navegador (formato, estado del microfono). Solo log: no se guarda en la base."""
+    voz = reporte.get("checks", {}).get("voice", {})
+    fallos = [c["code"] for c in voz.values() if c.get("status") == "failed" and c.get("code")]
+    if not fallos:
+        return
+    error = next((e.get("message") for e in reporte.get("errors", []) if e.get("component") == "voice"), None)
+    logger.warning("Voz fallo %s | servidor: %s | navegador: %s", fallos, error, (diag or "sin diagnostico")[:1000])
 
 
 async def _registrar(request: Request, tipo: str, reporte: dict) -> None:
@@ -93,6 +106,9 @@ async def verify_identity_endpoint(
     frase_fin: Optional[float] = Form(
         None, ge=0, le=600, description="Segundo del video en que termino la lectura de la frase."
     ),
+    diag: Optional[str] = Form(
+        None, max_length=1500, description="Datos tecnicos de la grabacion (navegador, formato, microfono)."
+    ),
 ):
     """Rostro del video vs identificacion + gestos del reto + frase hablada, en el mismo video.
 
@@ -113,6 +129,7 @@ async def verify_identity_endpoint(
         client=getattr(request.state, "client", None),
         ventana_frase=(frase_inicio, frase_fin) if frase_inicio is not None else None,
     ))
+    _diagnosticar_voz(reporte, diag)
     await _registrar(request, "video", reporte)
     return reporte
 

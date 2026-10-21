@@ -183,6 +183,9 @@
         font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums;
       }
       .chip .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--danger-solid); animation: pulse 1s infinite; }
+      .chip.mic { left: auto; right: 12px; }
+      .mic-bar { width: 46px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.25); overflow: hidden; }
+      .mic-bar i { display: block; height: 100%; background: var(--aqua); transform-origin: left; transform: scaleX(0); transition: transform .08s linear; }
       .countdown-big {
         position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; color: #fff;
         font-size: clamp(64px, 14vw, 120px); font-weight: 800; text-shadow: 0 6px 30px rgba(0,0,0,.45);
@@ -430,6 +433,10 @@
                 </div>
                 <div class="guide" aria-hidden="true"></div>
                 <div class="chip" id="rec" hidden><span class="dot"></span><span id="recTiempo">0:00</span></div>
+                <div class="chip mic" id="mic" hidden title="Nivel del micrófono">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+                  <span class="mic-bar"><i id="micNivel"></i></span>
+                </div>
                 <div class="countdown-big" id="cuentaAtras" hidden aria-live="assertive"></div>
                 <div class="burst" id="bien" hidden aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
@@ -856,6 +863,9 @@
       // Segundos del video en que se mostro la frase y en que termino: el servidor
       // solo escucha ese tramo y compara la INE contra la cara de ese tramo.
       let tiempos = {};
+      // Datos tecnicos de la ultima grabacion (navegador, formato, microfono). Se mandan con la
+      // verificacion para diagnosticar fallas de audio; no incluyen imagen, voz ni datos personales.
+      let diagnostico = null;
       let grabando = false;
 
       // ---------------- detector (Web Worker, o en la pagina si no se puede)
@@ -969,18 +979,67 @@
         refreshSend();
       };
 
+      // ---------------- camara y microfono
+      // Se abren nuevos en cada intento y se cierran al terminar de grabar: reutilizarlos
+      // fallaba en algunos telefonos (al reproducir la grabacion con sonido, el sistema
+      // silenciaba o cortaba el microfono y el siguiente intento salia sin audio).
+      let audioCtx = null, medidor = null;
+
+      function cerrarCamara() {
+        try { medidor?.fuente.disconnect(); } catch { /* ya desconectado */ }
+        medidor = null;
+        stream?.getTracks().forEach((t) => t.stop());
+        stream = null;
+      }
+
+      // Nivel del microfono (0 a 1) para el indicador y para detectar un microfono muerto.
+      function conectarMedidor() {
+        if (!audioCtx || audioCtx.state !== "running" || !stream.getAudioTracks().length) return;
+        try {
+          const fuente = audioCtx.createMediaStreamSource(stream);
+          const analizador = audioCtx.createAnalyser();
+          analizador.fftSize = 1024;
+          fuente.connect(analizador);  // sin conectar a la salida: no se escucha por la bocina
+          medidor = { fuente, analizador, buf: new Float32Array(analizador.fftSize), pico: 0 };
+        } catch { medidor = null; }
+      }
+
+      function nivelMicrofono() {
+        if (!medidor) return null;
+        medidor.analizador.getFloatTimeDomainData(medidor.buf);
+        let suma = 0;
+        for (const x of medidor.buf) suma += x * x;
+        return Math.sqrt(suma / medidor.buf.length);
+      }
+
+      // "ok" o el motivo por el que no se pudo: permiso, ocupado, dispositivo, microfono, error.
       async function abrirCamara() {
-        if (stream) return true;
+        cerrarCamara();
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
             audio: { echoCancellation: true, noiseSuppression: true },
           });
-          return true;
-        } catch {
-          return false;
+        } catch (e) {
+          stream = null;
+          if (e?.name === "NotAllowedError" || e?.name === "SecurityError") return "permiso";
+          if (e?.name === "NotReadableError" || e?.name === "AbortError") return "ocupado";
+          if (e?.name === "NotFoundError" || e?.name === "OverconstrainedError") return "dispositivo";
+          return "error";
         }
+        const audio = stream.getAudioTracks()[0];
+        if (!audio || audio.readyState !== "live") { cerrarCamara(); return "microfono"; }
+        conectarMedidor();
+        return "ok";
       }
+
+      const ERROR_CAMARA = {
+        permiso: "Necesitamos acceso a la cámara y al micrófono. Permítelo en el navegador (en el ícono junto a la dirección de la página) e intenta de nuevo.",
+        ocupado: "Otra aplicación está usando la cámara o el micrófono. Ciérrala (llamadas, grabadora, videollamadas) e intenta de nuevo.",
+        dispositivo: "No encontramos cámara o micrófono en este dispositivo.",
+        microfono: "No se pudo activar el micrófono. Revisa que el navegador tenga permiso de micrófono y que ninguna otra app lo esté usando.",
+        error: "No pudimos activar la cámara y el micrófono. Intenta de nuevo.",
+      };
 
       async function pedirReto() {
         const res = await fetch("api/challenge", { method: "POST" });
@@ -1008,11 +1067,19 @@
         $("btnIniciar").disabled = true;
         $("btnRepetir").disabled = true;
         $("aviso").textContent = "";
+        // El AudioContext del medidor se crea aqui, dentro del clic: Safari solo lo deja sonar
+        // (estado "running") si nace o se reanuda por una accion del usuario.
+        try {
+          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+          audioCtx.resume().catch(() => {});
+        } catch { audioCtx = null; }
         cargando("Preparando la cámara", "Si el navegador lo pide, permite el acceso a la cámara y al micrófono.");
         try {
-          if (!(await abrirCamara())) {
+          cerrarCamaraFoto();
+          const camara = await abrirCamara();
+          if (camara !== "ok") {
             listo();
-            $("aviso").textContent = "Necesitamos acceso a la cámara y al micrófono. Permítelo en el navegador e intenta de nuevo.";
+            $("aviso").textContent = ERROR_CAMARA[camara];
             return;
           }
           try {
@@ -1024,6 +1091,7 @@
               : e.message === "429"
                 ? "Hiciste muchos intentos seguidos. Espera un momento antes de volver a intentar."
                 : "No pudimos iniciar la prueba. Intenta de nuevo en un momento.";
+            cerrarCamara();
             return;
           }
           videoBlob = null; tiempos = {};
@@ -1085,6 +1153,18 @@
           recorder = new MediaRecorder(stream);
         }
         recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+        // Pedazos de 1 s solo en WebM (Chrome, Android); en Safari (MP4) una sola pieza, como siempre.
+        const enPedazos = /webm/i.test(recorder.mimeType || mime);
+
+        // Vigilancia del microfono: si el sistema lo corta o lo silencia a media grabacion,
+        // el video saldria sin audio y el servidor lo rechazaria.
+        const streamIntento = stream;
+        const pistaAudio = stream.getAudioTracks()[0];
+        let audioTerminado = false, mudoDesde = null, mudoMs = 0, usoVigia = false;
+        pistaAudio.onended = () => { if (inicioRec) audioTerminado = true; };
+        pistaAudio.onmute = () => { if (inicioRec && mudoDesde === null) mudoDesde = performance.now(); };
+        pistaAudio.onunmute = () => { if (mudoDesde !== null) { mudoMs += performance.now() - mudoDesde; mudoDesde = null; } };
+        $("mic").hidden = !medidor;
 
         // fase: encuadre -> cuenta -> gesto -> frase -> fin
         let fase = "encuadre", paso = 0, desde = performance.now(), inicioRec = 0, ultimo = 0;
@@ -1134,9 +1214,10 @@
         }
 
         function empezarGrabacion() {
-          // En pedazos de 1 s: el video se va juntando mientras se graba y no
+          // En pedazos de 1 s (WebM): el video se va juntando mientras se graba y no
           // depende de un solo envio al final (que algunos navegadores no hacen).
-          recorder.start(1000);
+          recorder.start(enPedazos ? 1000 : undefined);
+          if (medidor) medidor.pico = 0;
           inicioRec = performance.now();
           $("rec").hidden = false;
           stage.classList.remove("encuadre", "con-rostro");
@@ -1213,6 +1294,7 @@
             } catch { /* ya se habia detenido */ }
             // Si el navegador no avisa que termino (onstop), se arma con lo que ya se junto.
             vigia = setTimeout(() => {
+              usoVigia = true;
               try { if (recorder.state !== "inactive") recorder.requestData(); } catch { /* sin datos pendientes */ }
               setTimeout(finalizar, 500);
             }, 3000);
@@ -1233,6 +1315,24 @@
           $("btnListo").hidden = true;
           grabando = false;
           $("btnRepetir").hidden = false;
+          $("mic").hidden = true;
+
+          // Estado del microfono antes de cerrarlo; la camara y el microfono se apagan ya:
+          // asi la repeticion con sonido no interfiere con el siguiente intento.
+          if (mudoDesde !== null) mudoMs += performance.now() - mudoDesde;
+          const pico = medidor ? medidor.pico : null;
+          const audioCortado = audioTerminado || mudoMs > 1500;
+          // Silencio digital total: el microfono no entrego nada (la voz normal ronda 0.02-0.2).
+          const sinSonido = pico !== null && pico < 0.002;
+          diagnostico = {
+            navegador: navigator.userAgent.slice(0, 200),
+            formato: recorder.mimeType || mime || "(del navegador)",
+            pedazos: chunks.length, enPedazos, bytes: chunks.reduce((n, c) => n + c.size, 0), vigia: usoVigia,
+            microfono: { estado: pistaAudio.readyState, mudoMs: Math.round(mudoMs), terminado: audioTerminado,
+                         pico: pico === null ? null : Number(pico.toFixed(4)), medidor: audioCtx?.state || "sin" },
+          };
+          if (stream === streamIntento) cerrarCamara();
+
           if (!chunks.length) {
             $("pasoN").textContent = "No se guardó la grabación";
             mostrarPaso("rostro", "No pudimos guardar el video", "Presiona Grabar de nuevo para intentarlo otra vez.");
@@ -1240,11 +1340,24 @@
             return;
           }
           videoMime = recorder.mimeType || mime;
-          videoBlob = new Blob(chunks, { type: videoMime || "video/webm" });
+          const blob = new Blob(chunks, { type: videoMime || "video/webm" });
           tiempos = { fraseInicio, fraseFin };
-          mostrarGrabacion(URL.createObjectURL(videoBlob));
+          mostrarGrabacion(URL.createObjectURL(blob));
+          if (audioCortado) {
+            // El sistema corto el microfono: el video no trae voz y el servidor lo rechazaria.
+            videoBlob = null;
+            $("pasoN").textContent = "No se grabó el audio";
+            mostrarPaso("frase", "No se grabó tu voz",
+              "El micrófono se desactivó durante la grabación. Cierra otras apps que lo usen y presiona Grabar de nuevo.");
+            refreshSend();
+            return;
+          }
+          videoBlob = blob;
           $("pasoN").textContent = "Grabación lista";
           mostrarPaso("listo", "Prueba de vida grabada", "Revisa el video si quieres y presiona Verificar identidad.");
+          // El medidor no oyo nada: puede ser el microfono tapado o silenciado. Se avisa, pero
+          // no se bloquea (en algunos navegadores el medidor podria leer cero aunque si grabe).
+          if (sinSonido) $("aviso").textContent = "No detectamos sonido del micrófono. Si el resultado sale sin voz, revisa que no esté tapado o silenciado y graba de nuevo.";
           refreshSend();
         }
         recorder.onstop = finalizar;
@@ -1263,6 +1376,12 @@
 
         function tick(now) {
           if (fase === "fin") return;
+          // Indicador del microfono: que la persona vea que si capta su voz.
+          const nivel = nivelMicrofono();
+          if (nivel !== null) {
+            if (inicioRec) medidor.pico = Math.max(medidor.pico, nivel);
+            $("micNivel").style.transform = `scaleX(${Math.min(1, nivel * 8).toFixed(3)})`;
+          }
           if (inicioRec) {
             $("recTiempo").textContent = mmss(now - inicioRec);
             if (now - inicioRec > (MAX_DUR - 1) * 1000) { terminar(); return; }
@@ -1321,6 +1440,7 @@
         if ($("thr").value) fd.append("match_threshold_percent", $("thr").value);
         if (tiempos.fraseInicio != null) fd.append("frase_inicio", tiempos.fraseInicio.toFixed(2));
         if (tiempos.fraseFin != null) fd.append("frase_fin", tiempos.fraseFin.toFixed(2));
+        if (diagnostico) fd.append("diag", JSON.stringify(diagnostico).slice(0, 1000));
 
         const { status, body } = await postForm("api/verify-identity", fd);
         listo();
@@ -1437,6 +1557,17 @@
       // ======================= Flujo de foto contra identificacion =======================
       let pIdFile = null, pPhoto = null, pStream = null;
 
+      // La camara de la foto se cierra antes de abrir la de la prueba de vida (y al reves):
+      // en muchos telefonos solo una pagina puede tenerla, y la otra fallaria.
+      function cerrarCamaraFoto() {
+        pStream?.getTracks().forEach((t) => t.stop());
+        pStream = null;
+        $("pCam").srcObject = null;
+        $("pStage").hidden = true;
+        $("pBtnCam").disabled = false;
+        $("pBtnShot").disabled = true;
+      }
+
       function pRefresh() {
         const missing = [];
         if (!pIdFile) missing.push("identificación");
@@ -1464,6 +1595,8 @@
       };
 
       $("pBtnCam").onclick = async () => {
+        if (grabando) { $("pAviso").textContent = "Termina primero la prueba de vida que estás grabando."; return; }
+        cerrarCamara();
         $("pAviso").textContent = "";
         cargando("Preparando la cámara", "Si el navegador lo pide, permite el acceso a la cámara.");
         try {
