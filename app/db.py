@@ -204,6 +204,21 @@ def _actividad(escaneos: list[datetime], intentos: list[datetime]) -> list[dict]
     return out
 
 
+def _momentos_de_pruebas(sesiones: list, intentos: list) -> list[datetime]:
+    """Cuando ocurrio cada prueba, para la grafica de actividad.
+
+    Las pruebas de antes de que existiera la tabla `intentos` solo tienen la
+    hora de la ultima: se cuentan ahi para que no desaparezcan de la grafica.
+    """
+    por_sesion = Counter(i["sesion_id"] for i in intentos)
+    momentos = [i["creado"] for i in intentos]
+    for s in sesiones:
+        previas = s["pruebas"] - por_sesion.get(s["id"], 0)
+        if previas > 0 and s["ultima_prueba"] is not None:
+            momentos += [s["ultima_prueba"]] * previas
+    return momentos
+
+
 def _armar(sesiones: list, intentos: list, ultimas: int) -> dict:
     con_prueba = [s for s in sesiones if s["pruebas"] > 0]
     iniciaron = [s for s in sesiones if s["retos"] > 0 or s["pruebas"] > 0]
@@ -215,7 +230,7 @@ def _armar(sesiones: list, intentos: list, ultimas: int) -> dict:
     return {
         "sesiones": len(sesiones),
         "personas": len(con_prueba),
-        "pruebas": len(intentos),
+        "pruebas": sum(s["pruebas"] for s in sesiones),
         "aprobadas": aprobadas,
         "rechazadas": rechazadas,
         "embudo": {
@@ -230,7 +245,11 @@ def _armar(sesiones: list, intentos: list, ultimas: int) -> dict:
             "abandonaron": len(sesiones) - len(con_prueba),
         },
         "motivos": [{"codigo": c, "n": n} for c, n in motivos.most_common(8)],
-        "actividad": _actividad([s["creada"] for s in sesiones], [i["creado"] for i in intentos]),
+        "actividad": _actividad([s["creada"] for s in sesiones], _momentos_de_pruebas(sesiones, intentos)),
+        # Desde cuando hay detalle por intento (motivos); antes solo se guardaba el resumen.
+        "motivos_desde": min((i["creado"] for i in intentos), default=_ahora()).isoformat(),
+        # Hay pruebas sin detalle (de antes de la tabla intentos): sus motivos no se conocen.
+        "motivos_parciales": sum(s["pruebas"] for s in sesiones) > len(intentos),
         "recientes": [_fila(s) for s in recientes],
     }
 
@@ -241,6 +260,6 @@ async def resumen(ultimas: int = 15) -> dict:
         return _armar(list(_mem_sesiones.values()), list(_mem_intentos), ultimas)
     async with _pool.acquire() as conn:
         sesiones = await conn.fetch(
-            "SELECT creada, pruebas, retos, ultimo_tipo, ultimo_aprobado FROM sesiones")
-        intentos = await conn.fetch("SELECT creado, aprobado, fallos FROM intentos")
+            "SELECT id, creada, pruebas, retos, ultima_prueba, ultimo_tipo, ultimo_aprobado FROM sesiones")
+        intentos = await conn.fetch("SELECT sesion_id, creado, aprobado, fallos FROM intentos")
     return _armar([dict(s) for s in sesiones], [dict(i) for i in intentos], ultimas)

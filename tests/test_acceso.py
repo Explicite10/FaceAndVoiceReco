@@ -152,6 +152,16 @@ def test_embudo_motivos_y_actividad():
     assert solo_escaneo  # (solo para nombrar la sesion que se quedo en el escaneo)
 
 
+def test_pruebas_anteriores_a_intentos_siguen_contando():
+    # Sesion de antes de la tabla intentos: tiene pruebas en el resumen pero sin filas de intentos.
+    sid = asyncio.run(db.crear_sesion())
+    db._mem_sesiones[sid].update(pruebas=3, aprobadas=1, ultima_prueba=db._ahora(), ultimo_tipo="video",
+                                 ultimo_aprobado=True)
+    r = asyncio.run(db.resumen())
+    assert r["pruebas"] == 3 and sum(a["pruebas"] for a in r["actividad"]) == 3
+    assert r["embudo"]["verificaron"] == 1 and r["motivos"] == [] and r["motivos_parciales"]
+
+
 def test_pedir_reto_cuenta_como_inicio():
     c = cliente()
     c.get(f"/p/{asyncio.run(db.qr_token())}")

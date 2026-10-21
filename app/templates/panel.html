@@ -89,7 +89,7 @@
               <div id="gResultado" class="chart"></div>
             </figure>
             <figure class="chart-card">
-              <figcaption><b>¿Por qué no pasaron?</b><span>Validaciones que fallaron en los intentos no aprobados.</span></figcaption>
+              <figcaption><b>¿Por qué no pasaron?</b><span>Validaciones que fallaron en los intentos no aprobados<span id="motivosDesde"></span>.</span></figcaption>
               <div id="gMotivos" class="chart"></div>
             </figure>
             <figure class="chart-card">
@@ -220,6 +220,8 @@
         const res = r.resultado;
         const total = res.aprobadas + res.no_aprobadas + res.abandonaron;
         graf.resultado?.updateSeries(total ? [res.aprobadas, res.no_aprobadas, res.abandonaron] : []);
+        // Los motivos se guardan por intento desde que existe la grafica; antes solo habia resumen.
+        $("motivosDesde").textContent = r.motivos_parciales ? ` (registrados desde el ${hora(r.motivos_desde)})` : "";
         graf.motivos?.updateOptions({
           xaxis: { categories: r.motivos.map((m) => MOTIVO[m.codigo] || "Otro motivo") },
           series: [{ name: "Intentos", data: r.motivos.map((m) => m.n) }],
