@@ -22,6 +22,7 @@ def entorno(monkeypatch):
     monkeypatch.setattr(settings, "admin_password_hash", acceso.hash_password(PASSWORD))
     db._mem_ajustes.clear()
     db._mem_sesiones.clear()
+    db._mem_intentos.clear()
     acceso.set_qr_vigente(asyncio.run(db.qr_token()))
     for lim in (rate_limit.login_ip_limiter, rate_limit.login_global_limiter, rate_limit.qr_scan_limiter,
                 rate_limit.challenge_limiter, rate_limit.verification_limiter):
@@ -124,9 +125,38 @@ def test_qr_nuevo_invalida_el_anterior():
 def test_registrar_prueba_en_la_sesion():
     sid = asyncio.run(db.crear_sesion())
     asyncio.run(db.registrar_prueba(sid, "video", True))
-    asyncio.run(db.registrar_prueba(sid, "foto", False))
+    asyncio.run(db.registrar_prueba(sid, "foto", False, ["face_mismatch"]))
     r = asyncio.run(db.resumen())
     assert (r["sesiones"], r["personas"], r["pruebas"], r["aprobadas"], r["rechazadas"]) == (1, 1, 2, 0, 1)
+
+
+def test_embudo_motivos_y_actividad():
+    solo_escaneo = asyncio.run(db.crear_sesion())
+    inicio = asyncio.run(db.crear_sesion())
+    asyncio.run(db.registrar_reto(inicio))
+    aprobada = asyncio.run(db.crear_sesion())
+    asyncio.run(db.registrar_reto(aprobada))
+    asyncio.run(db.registrar_prueba(aprobada, "video", True))
+    rechazada = asyncio.run(db.crear_sesion())
+    asyncio.run(db.registrar_reto(rechazada))
+    asyncio.run(db.registrar_prueba(rechazada, "video", False, ["blink_not_detected", "phrase_mismatch"]))
+    asyncio.run(db.registrar_prueba(rechazada, "video", False, ["blink_not_detected"]))
+
+    r = asyncio.run(db.resumen())
+    assert r["embudo"] == {"escanearon": 4, "iniciaron": 3, "verificaron": 2, "aprobadas": 1}
+    assert r["resultado"] == {"aprobadas": 1, "no_aprobadas": 1, "abandonaron": 2}
+    assert r["motivos"][0] == {"codigo": "blink_not_detected", "n": 2}
+    assert sum(a["escaneos"] for a in r["actividad"]) == 4 and sum(a["pruebas"] for a in r["actividad"]) == 3
+    etapas = sorted(s["etapa"] for s in r["recientes"])
+    assert etapas == ["aprobada", "escaneo", "inicio", "no_aprobada"]
+    assert solo_escaneo  # (solo para nombrar la sesion que se quedo en el escaneo)
+
+
+def test_pedir_reto_cuenta_como_inicio():
+    c = cliente()
+    c.get(f"/p/{asyncio.run(db.qr_token())}")
+    assert c.post("/api/challenge").status_code == 200
+    assert asyncio.run(db.resumen())["embudo"]["iniciaron"] == 1
 
 
 # ---------------------------------------------------------------- protecciones generales

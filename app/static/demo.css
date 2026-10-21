@@ -123,3 +123,14 @@ td { padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: now
 .pill.bad { background: var(--danger-bg); color: var(--danger); }
 .pill.none { background: var(--surface-2); color: var(--muted); }
 .empty-row { color: var(--muted); text-align: center; padding: 18px; }
+
+/* ---------- Graficas del panel ---------- */
+.charts { display: grid; gap: 14px; margin-top: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.chart-card { margin: 0; padding: 14px 14px 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); min-width: 0; }
+.chart-card figcaption { margin-bottom: 4px; }
+.chart-card figcaption b { display: block; color: var(--navy); font-size: 15px; }
+.chart-card figcaption span { color: var(--muted); font-size: 12.5px; }
+.chart { min-height: 280px; }
+.table-title { margin: 22px 0 0; font-size: 15px; color: var(--navy); }
+.pill.mid { background: #fff3e8; color: #a8530f; }

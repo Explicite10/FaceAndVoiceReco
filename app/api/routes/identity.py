@@ -34,10 +34,14 @@ async def _con_turno(coro):
 
 
 async def _registrar(request: Request, tipo: str, reporte: dict) -> None:
-    """Suma la prueba a la sesion del QR (solo el resultado: nada de imagenes ni video)."""
+    """Suma la prueba a la sesion del QR: resultado y codigos de lo que fallo (nada de imagenes ni video)."""
     sid = getattr(request.state, "sesion", None)
-    if sid:
-        await db.registrar_prueba(sid, tipo, bool(reporte["result"]["approved"]))
+    if not sid:
+        return
+    fallos = [c["code"] for grupo in reporte.get("checks", {}).values() for c in grupo.values()
+              if c.get("status") == "failed" and c.get("code")]
+    await db.registrar_prueba(sid, tipo, bool(reporte["result"]["approved"]), fallos,
+                              reporte.get("processing_time_ms"))
 
 
 @router.post(
@@ -45,13 +49,16 @@ async def _registrar(request: Request, tipo: str, reporte: dict) -> None:
     response_model=ChallengeResponse,
     dependencies=[Depends(require_acceso), Depends(challenge_limiter)],
 )
-def create_challenge_endpoint(request: Request):
+async def create_challenge_endpoint(request: Request):
     """Reto de un solo uso para /api/verify-identity: gestos y frase aleatorios.
 
     En el video, el usuario hace los gestos en el orden indicado y despues lee la
     frase. Vence en `expires_in_sec` y solo sirve para un video.
     """
     c = create_challenge(getattr(request.state, "client", None))
+    # Para el embudo del panel: la persona activo la camara para grabar.
+    if getattr(request.state, "sesion", None):
+        await db.registrar_reto(request.state.sesion)
     return {
         "challenge_id": c["challenge_id"],
         "phrase": c["phrase"],

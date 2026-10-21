@@ -69,7 +69,7 @@
 
         <section class="card stats-card solo-admin">
           <div class="stats-head">
-            <h2>Participación</h2>
+            <h2>Resultados</h2>
             <small>{% if persistente %}Se actualiza cada 10 segundos.{% else %}Sin base de datos: los conteos se pierden al reiniciar.{% endif %}</small>
           </div>
           <div class="tiles">
@@ -78,9 +78,30 @@
             <div class="tile ok"><small>Aprobadas</small><strong id="nAprobadas">{{ resumen.aprobadas }}</strong></div>
             <div class="tile bad"><small>No aprobadas</small><strong id="nRechazadas">{{ resumen.rechazadas }}</strong></div>
           </div>
+
+          <div class="charts">
+            <figure class="chart-card">
+              <figcaption><b>¿Dónde se quedaron?</b><span>De quienes escanearon, cuántos llegaron a cada paso.</span></figcaption>
+              <div id="gEmbudo" class="chart"></div>
+            </figure>
+            <figure class="chart-card">
+              <figcaption><b>Resultado por persona</b><span>Según su último intento.</span></figcaption>
+              <div id="gResultado" class="chart"></div>
+            </figure>
+            <figure class="chart-card">
+              <figcaption><b>¿Por qué no pasaron?</b><span>Validaciones que fallaron en los intentos no aprobados.</span></figcaption>
+              <div id="gMotivos" class="chart"></div>
+            </figure>
+            <figure class="chart-card">
+              <figcaption><b>Actividad</b><span>Escaneos y pruebas cada 15 minutos.</span></figcaption>
+              <div id="gActividad" class="chart"></div>
+            </figure>
+          </div>
+
+          <h3 class="table-title">Últimas sesiones</h3>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Escaneo</th><th>Pruebas</th><th>Tipo</th><th>Último resultado</th></tr></thead>
+              <thead><tr><th>Escaneo</th><th>Dónde se quedó</th><th>Pruebas</th><th>Tipo</th></tr></thead>
               <tbody id="recientes"></tbody>
             </table>
           </div>
@@ -88,24 +109,136 @@
       </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@4.7.0/dist/apexcharts.min.js"
+            integrity="sha384-Hf0cGsweCbozkRP14s5KIue6STJYKaoipB/i1gTdbX+umKD59qA/Szk42FPMuKtB" crossorigin="anonymous"></script>
     <script id="datosIniciales" type="application/json">{{ resumen | tojson }}</script>
     <script>
       const $ = (id) => document.getElementById(id);
+      const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       const hora = (iso) => new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
       const TIPO = { video: "Video", foto: "Foto" };
+      const C = { navy: "#072146", azul: "#1973b8", celeste: "#5bbeff", aqua: "#2dcccd", ok: "#48ae64", mal: "#da3851", gris: "#b7c1cc", texto: "#5d6b79" };
+      const ETAPA = {
+        escaneo: '<span class="pill none">Solo escaneó</span>',
+        inicio: '<span class="pill mid">Inició, no verificó</span>',
+        aprobada: '<span class="pill ok">Aprobada</span>',
+        no_aprobada: '<span class="pill bad">No aprobada</span>',
+      };
+      // Codigos de las validaciones (los mismos del reporte del servidor), en palabras cortas.
+      const MOTIVO = {
+        face_mismatch: "El rostro no coincide con la INE",
+        id_face_not_found: "No se vio rostro en la INE",
+        video_face_not_found: "No se vio el rostro en el video",
+        face_missing_in_segment: "El rostro salió de cuadro",
+        multiple_faces_detected: "Más de una persona",
+        person_changed: "Cambió la persona",
+        audio_missing: "No hubo audio",
+        audio_duration_invalid: "Grabación muy corta o larga",
+        no_speech_detected: "No se escuchó la voz",
+        speech_low_confidence: "Voz poco clara",
+        phrase_mismatch: "La frase no coincide",
+        spoof_detected: "Parece foto o pantalla",
+        face_not_tracked: "El rostro no se vio bien",
+        lips_not_moving: "No movió los labios",
+        lips_out_of_sync: "Labios no van con la voz",
+        head_turn_not_detected: "No giró la cabeza",
+        blink_not_detected: "No parpadeó",
+        hand_raise_not_detected: "No alzó la mano",
+        gesture_order_mismatch: "Movimientos en otro orden",
+        photo_face_not_found: "No se vio rostro en la foto",
+        face_too_small: "Rostro muy pequeño en la foto",
+        image_blurry: "Foto borrosa",
+        image_too_dark: "Foto muy oscura",
+        image_overexposed: "Foto con demasiada luz",
+      };
+
+      const base = {
+        chart: { fontFamily: "Libre Franklin, system-ui, sans-serif", foreColor: C.texto, toolbar: { show: false },
+                 animations: { enabled: true, speed: 450 }, parentHeightOffset: 0, zoom: { enabled: false } },
+        dataLabels: { enabled: false },
+        grid: { borderColor: "#e8edf2", strokeDashArray: 4 },
+        tooltip: { theme: "light" },
+        noData: { text: "Aún sin datos", style: { color: C.texto, fontSize: "14px" } },
+        legend: { position: "bottom", fontSize: "13px" },
+      };
+
+      function crear(id, opciones) {
+        if (!window.ApexCharts) return null;  // sin el CDN el panel sigue funcionando, solo sin graficas
+        const grafica = new ApexCharts($(id), { ...base, ...opciones, chart: { ...base.chart, ...opciones.chart } });
+        grafica.render();
+        return grafica;
+      }
+
+      const graf = {
+        embudo: crear("gEmbudo", {
+          chart: { type: "bar", height: 280 },
+          plotOptions: { bar: { horizontal: true, isFunnel: true, borderRadius: 4, barHeight: "78%", distributed: true } },
+          colors: [C.navy, C.azul, C.celeste, C.ok],
+          dataLabels: { enabled: true, formatter: (v, o) => `${o.w.globals.labels[o.dataPointIndex]}: ${v}`,
+                        dropShadow: { enabled: false }, style: { fontSize: "13px", fontWeight: 600 } },
+          legend: { show: false },
+          xaxis: { categories: [] },
+          series: [{ name: "Personas", data: [] }],
+        }),
+        resultado: crear("gResultado", {
+          chart: { type: "donut", height: 280 },
+          labels: ["Aprobadas", "No aprobadas", "Abandonaron"],
+          colors: [C.ok, C.mal, C.gris],
+          plotOptions: { pie: { donut: { size: "64%", labels: { show: true,
+            total: { show: true, label: "Personas", color: C.texto, formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0) } } } } },
+          stroke: { width: 2, colors: ["#fff"] },
+          series: [],
+        }),
+        motivos: crear("gMotivos", {
+          chart: { type: "bar", height: 280 },
+          plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: "62%" } },
+          colors: [C.mal],
+          dataLabels: { enabled: true, style: { fontSize: "12px" } },
+          xaxis: { categories: [], labels: { formatter: (v) => Math.round(v) } },
+          yaxis: { labels: { maxWidth: 190 } },
+          series: [{ name: "Intentos", data: [] }],
+        }),
+        actividad: crear("gActividad", {
+          chart: { type: "area", height: 280 },
+          colors: [C.azul, C.aqua],
+          stroke: { curve: "smooth", width: 2 },
+          fill: { type: "gradient", gradient: { opacityFrom: 0.35, opacityTo: 0.05 } },
+          xaxis: { type: "datetime", labels: { datetimeUTC: false, format: "HH:mm" } },
+          yaxis: { min: 0, forceNiceScale: true, labels: { formatter: (v) => Math.round(v) } },
+          tooltip: { x: { format: "dd MMM HH:mm" } },
+          series: [],
+        }),
+      };
+
+      function pintarGraficas(r) {
+        const e = r.embudo;
+        graf.embudo?.updateOptions({
+          xaxis: { categories: ["Escanearon el QR", "Iniciaron la prueba", "Enviaron a verificar", "Aprobadas"] },
+          series: [{ name: "Personas", data: e.escanearon ? [e.escanearon, e.iniciaron, e.verificaron, e.aprobadas] : [] }],
+        });
+        const res = r.resultado;
+        const total = res.aprobadas + res.no_aprobadas + res.abandonaron;
+        graf.resultado?.updateSeries(total ? [res.aprobadas, res.no_aprobadas, res.abandonaron] : []);
+        graf.motivos?.updateOptions({
+          xaxis: { categories: r.motivos.map((m) => MOTIVO[m.codigo] || "Otro motivo") },
+          series: [{ name: "Intentos", data: r.motivos.map((m) => m.n) }],
+        });
+        graf.actividad?.updateSeries(r.actividad.length ? [
+          { name: "Escaneos", data: r.actividad.map((a) => [new Date(a.t).getTime(), a.escaneos]) },
+          { name: "Pruebas", data: r.actividad.map((a) => [new Date(a.t).getTime(), a.pruebas]) },
+        ] : []);
+      }
 
       function pintar(r) {
         $("nSesiones").textContent = r.sesiones;
         $("nPersonas").textContent = r.personas;
         $("nAprobadas").textContent = r.aprobadas;
         $("nRechazadas").textContent = r.rechazadas;
-        const filas = r.recientes.map((s) => {
-          const res = s.ultimo_aprobado === true ? '<span class="pill ok">Aprobada</span>'
-            : s.ultimo_aprobado === false ? '<span class="pill bad">No aprobada</span>'
-            : '<span class="pill none">Sin prueba</span>';
-          return `<tr><td>${hora(s.creada)}</td><td>${s.pruebas}</td><td>${TIPO[s.ultimo_tipo] || "—"}</td><td>${res}</td></tr>`;
-        });
+        const filas = r.recientes.map((s) =>
+          `<tr><td>${hora(s.creada)}</td><td>${ETAPA[s.etapa] || ""}</td><td>${s.pruebas}</td><td>${esc(TIPO[s.ultimo_tipo] || "—")}</td></tr>`);
         $("recientes").innerHTML = filas.join("") || '<tr><td class="empty-row" colspan="4">Aún nadie ha escaneado el código.</td></tr>';
+        pintarGraficas(r);
       }
       pintar(JSON.parse($("datosIniciales").textContent));
 

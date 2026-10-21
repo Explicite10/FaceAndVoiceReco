@@ -1,15 +1,17 @@
 """PostgreSQL: el token del QR y un resumen de cada sesion de la demo.
 
 Aqui nunca entran el video, la INE, la cara, la voz ni la IP: solo cuando se
-abrio cada sesion (alguien escaneo el QR), cuantas pruebas hizo y como salio
-la ultima. Sirve para contar cuantas personas hicieron la prueba.
+abrio cada sesion (alguien escaneo el QR), si inicio la prueba, y por cada
+intento cuando fue, si se aprobo y los codigos de lo que fallo. Sirve para
+contar cuantas personas hicieron la prueba y en que paso se quedaron.
 
 Sin DATABASE_URL todo queda en memoria (para desarrollo): se pierde al reiniciar.
-Las tablas se crean al arrancar si no existen.
+Las tablas y columnas se crean al arrancar si no existen.
 """
 import logging
 import secrets
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime, timedelta, timezone
 
 import asyncpg
 
@@ -35,11 +37,28 @@ CREATE TABLE IF NOT EXISTS sesiones (
     ultimo_aprobado boolean
 );
 CREATE INDEX IF NOT EXISTS sesiones_creada ON sesiones (creada DESC);
+-- Retos pedidos: la persona activo la camara para grabar.
+ALTER TABLE sesiones ADD COLUMN IF NOT EXISTS retos integer NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS intentos (
+    id          bigserial PRIMARY KEY,
+    sesion_id   text NOT NULL REFERENCES sesiones(id) ON DELETE CASCADE,
+    creado      timestamptz NOT NULL DEFAULT now(),
+    tipo        text NOT NULL,
+    aprobado    boolean NOT NULL,
+    fallos      text[] NOT NULL DEFAULT '{}',
+    duracion_ms integer
+);
+CREATE INDEX IF NOT EXISTS intentos_creado ON intentos (creado);
 """
+
+# Bloques de la grafica de actividad.
+BLOQUE = timedelta(minutes=15)
 
 # Respaldo en memoria cuando no hay base de datos.
 _mem_ajustes: dict[str, str] = {}
 _mem_sesiones: dict[str, dict] = {}
+_mem_intentos: list[dict] = []
 
 
 def _ahora() -> datetime:
@@ -102,7 +121,7 @@ async def rotar_qr() -> str:
 async def crear_sesion() -> str:
     sid = secrets.token_urlsafe(16)
     if _pool is None:
-        _mem_sesiones[sid] = {"id": sid, "creada": _ahora(), "pruebas": 0, "aprobadas": 0,
+        _mem_sesiones[sid] = {"id": sid, "creada": _ahora(), "pruebas": 0, "aprobadas": 0, "retos": 0,
                               "ultima_prueba": None, "ultimo_tipo": None, "ultimo_aprobado": None}
         return sid
     async with _pool.acquire() as conn:
@@ -110,54 +129,118 @@ async def crear_sesion() -> str:
     return sid
 
 
-async def registrar_prueba(sid: str, tipo: str, aprobada: bool) -> None:
-    """Suma una prueba terminada a la sesion. `tipo`: "video" o "foto"."""
+async def registrar_reto(sid: str) -> None:
+    """La persona pidio un reto: activo la camara para grabar la prueba de vida."""
+    if _pool is None:
+        if sid in _mem_sesiones:
+            _mem_sesiones[sid]["retos"] += 1
+        return
+    async with _pool.acquire() as conn:
+        await conn.execute("UPDATE sesiones SET retos = retos + 1 WHERE id = $1", sid)
+
+
+async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
+                           fallos: list[str] | None = None, duracion_ms: int | None = None) -> None:
+    """Suma una prueba terminada. `tipo`: "video" o "foto"; `fallos`: codigos de los checks que fallaron."""
+    fallos = list(fallos or [])
     if _pool is None:
         s = _mem_sesiones.get(sid)
         if s:
             s["pruebas"] += 1
             s["aprobadas"] += int(aprobada)
             s.update(ultima_prueba=_ahora(), ultimo_tipo=tipo, ultimo_aprobado=aprobada)
+            _mem_intentos.append({"sesion_id": sid, "creado": _ahora(), "tipo": tipo, "aprobado": aprobada,
+                                  "fallos": fallos, "duracion_ms": duracion_ms})
         return
     async with _pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE sesiones SET pruebas = pruebas + 1, aprobadas = aprobadas + $2::int, "
-            "ultima_prueba = now(), ultimo_tipo = $3, ultimo_aprobado = $4 WHERE id = $1",
-            sid, int(aprobada), tipo, aprobada,
-        )
+        async with conn.transaction():
+            n = await conn.execute(
+                "UPDATE sesiones SET pruebas = pruebas + 1, aprobadas = aprobadas + $2::int, "
+                "ultima_prueba = now(), ultimo_tipo = $3, ultimo_aprobado = $4 WHERE id = $1",
+                sid, int(aprobada), tipo, aprobada,
+            )
+            if n.endswith(" 1"):
+                await conn.execute(
+                    "INSERT INTO intentos (sesion_id, tipo, aprobado, fallos, duracion_ms) VALUES ($1, $2, $3, $4, $5)",
+                    sid, tipo, aprobada, fallos, duracion_ms,
+                )
+
+
+# ---------------------------------------------------------------- resumen para el panel
+
+def _etapa(s) -> str:
+    """Hasta donde llego la sesion."""
+    if s["pruebas"] > 0:
+        return "aprobada" if s["ultimo_aprobado"] else "no_aprobada"
+    return "inicio" if s["retos"] > 0 else "escaneo"
 
 
 def _fila(s) -> dict:
     return {
         "creada": s["creada"].isoformat(),
         "pruebas": s["pruebas"],
-        "aprobadas": s["aprobadas"],
         "ultimo_tipo": s["ultimo_tipo"],
         "ultimo_aprobado": s["ultimo_aprobado"],
+        "etapa": _etapa(s),
+    }
+
+
+def _bloque(t: datetime) -> datetime:
+    t = t.astimezone(timezone.utc)
+    minutos = int(BLOQUE.total_seconds() // 60)
+    return t.replace(minute=t.minute - t.minute % minutos, second=0, microsecond=0)
+
+
+def _actividad(escaneos: list[datetime], intentos: list[datetime]) -> list[dict]:
+    """Escaneos y pruebas por bloque de 15 minutos, sin huecos entre el primero y el ultimo."""
+    if not escaneos and not intentos:
+        return []
+    e, p = Counter(map(_bloque, escaneos)), Counter(map(_bloque, intentos))
+    inicio, fin = min([*e, *p]), max([*e, *p])
+    out, t = [], inicio
+    while t <= fin and len(out) < 500:
+        out.append({"t": t.isoformat(), "escaneos": e.get(t, 0), "pruebas": p.get(t, 0)})
+        t += BLOQUE
+    return out
+
+
+def _armar(sesiones: list, intentos: list, ultimas: int) -> dict:
+    con_prueba = [s for s in sesiones if s["pruebas"] > 0]
+    iniciaron = [s for s in sesiones if s["retos"] > 0 or s["pruebas"] > 0]
+    aprobadas = sum(1 for s in con_prueba if s["ultimo_aprobado"])
+    rechazadas = sum(1 for s in con_prueba if s["ultimo_aprobado"] is False)
+    # Motivos: de los intentos no aprobados, cuantas veces fallo cada check.
+    motivos = Counter(f for i in intentos if not i["aprobado"] for f in set(i["fallos"]))
+    recientes = sorted(sesiones, key=lambda s: s["creada"], reverse=True)[:ultimas]
+    return {
+        "sesiones": len(sesiones),
+        "personas": len(con_prueba),
+        "pruebas": len(intentos),
+        "aprobadas": aprobadas,
+        "rechazadas": rechazadas,
+        "embudo": {
+            "escanearon": len(sesiones),
+            "iniciaron": len(iniciaron),
+            "verificaron": len(con_prueba),
+            "aprobadas": aprobadas,
+        },
+        "resultado": {
+            "aprobadas": aprobadas,
+            "no_aprobadas": rechazadas,
+            "abandonaron": len(sesiones) - len(con_prueba),
+        },
+        "motivos": [{"codigo": c, "n": n} for c, n in motivos.most_common(8)],
+        "actividad": _actividad([s["creada"] for s in sesiones], [i["creado"] for i in intentos]),
+        "recientes": [_fila(s) for s in recientes],
     }
 
 
 async def resumen(ultimas: int = 15) -> dict:
-    """Conteos para el panel y las sesiones mas recientes (sin su id)."""
+    """Conteos, embudo, motivos y actividad para el panel (sin ids ni datos personales)."""
     if _pool is None:
-        todas = list(_mem_sesiones.values())
-        recientes = sorted(todas, key=lambda s: s["creada"], reverse=True)[:ultimas]
-        con_prueba = [s for s in todas if s["pruebas"] > 0]
-        return {
-            "sesiones": len(todas),
-            "personas": len(con_prueba),
-            "pruebas": sum(s["pruebas"] for s in todas),
-            "aprobadas": sum(1 for s in con_prueba if s["ultimo_aprobado"]),
-            "rechazadas": sum(1 for s in con_prueba if s["ultimo_aprobado"] is False),
-            "recientes": [_fila(s) for s in recientes],
-        }
+        return _armar(list(_mem_sesiones.values()), list(_mem_intentos), ultimas)
     async with _pool.acquire() as conn:
-        t = await conn.fetchrow(
-            "SELECT count(*) AS sesiones, count(*) FILTER (WHERE pruebas > 0) AS personas, "
-            "coalesce(sum(pruebas), 0) AS pruebas, "
-            "count(*) FILTER (WHERE ultimo_aprobado) AS aprobadas, "
-            "count(*) FILTER (WHERE ultimo_aprobado = false) AS rechazadas FROM sesiones"
-        )
-        filas = await conn.fetch("SELECT * FROM sesiones ORDER BY creada DESC LIMIT $1", ultimas)
-    return {**{k: int(t[k]) for k in ("sesiones", "personas", "pruebas", "aprobadas", "rechazadas")},
-            "recientes": [_fila(s) for s in filas]}
+        sesiones = await conn.fetch(
+            "SELECT creada, pruebas, retos, ultimo_tipo, ultimo_aprobado FROM sesiones")
+        intentos = await conn.fetch("SELECT creado, aprobado, fallos FROM intentos")
+    return _armar([dict(s) for s in sesiones], [dict(i) for i in intentos], ultimas)
