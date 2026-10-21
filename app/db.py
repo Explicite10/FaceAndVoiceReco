@@ -294,7 +294,9 @@ async def detalle_sesion(sid: str) -> dict | None:
         s = _mem_sesiones.get(sid)
         if s is None:
             return None
-        intentos = sorted((i for i in _mem_intentos if i["sesion_id"] == sid), key=lambda i: i["creado"], reverse=True)
+        # Empates de hora (mismo milisegundo): gana el que se registro despues.
+        propios = [(n, i) for n, i in enumerate(_mem_intentos) if i["sesion_id"] == sid]
+        intentos = [i for _, i in sorted(propios, key=lambda x: (x[1]["creado"], x[0]), reverse=True)]
     else:
         async with _pool.acquire() as conn:
             s = await conn.fetchrow(
@@ -304,7 +306,7 @@ async def detalle_sesion(sid: str) -> dict | None:
                 return None
             intentos = await conn.fetch(
                 "SELECT creado, tipo, aprobado, fallos, duracion_ms, detalle FROM intentos "
-                "WHERE sesion_id = $1 ORDER BY creado DESC", sid)
+                "WHERE sesion_id = $1 ORDER BY creado DESC, id DESC", sid)
     return {
         "sesion": {
             **_fila(s),
