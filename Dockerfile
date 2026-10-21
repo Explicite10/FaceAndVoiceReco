@@ -64,9 +64,11 @@ RUN cd /app/models && \
 # Copia tu código
 COPY app /app/app
 
-# uploads/ guarda los videos mientras se procesan; el usuario app necesita
+# uploads/ guarda los videos mientras se procesan y evidencia/ el expediente
+# (INE, video, foto; en un volumen). El usuario app necesita
 # escribir ahi y en la cache de modelos.
-RUN mkdir -p /app/uploads && chown -R app:app /app/uploads /app/models /app/.cache
+RUN mkdir -p /app/uploads /app/evidencia && chmod 700 /app/evidencia \
+    && chown -R app:app /app/uploads /app/evidencia /app/models /app/.cache
 USER app
 
 EXPOSE 7860

@@ -250,3 +250,25 @@ body:has(dialog.modal[open]) { overflow: hidden; }
   .pag-btn { padding: 10px 12px; min-height: 44px; max-width: 100%; }
 }
 @media (max-width: 360px) { .pag-btn span { display: none; } }
+
+/* ---------- Expediente en "Ver registro": INE, video y foto ---------- */
+.expediente { margin-bottom: 16px; }
+.exp-titulo { margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.exp-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 620px) {
+  .exp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .exp-ancho { grid-column: 1 / -1; }
+}
+.exp-item { margin: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface-2); min-width: 0; }
+.exp-media { display: block; width: 100%; background: #0b1424; }
+img.exp-media { aspect-ratio: 16 / 10; object-fit: contain; }
+video.exp-media { max-height: 60vh; }
+.exp-img-link { display: block; }
+.exp-sin-vista { display: grid; place-items: center; aspect-ratio: 16 / 10; color: var(--faint); font-size: 13px; }
+.exp-item figcaption { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; background: var(--surface); }
+.exp-item figcaption > span:first-child { display: grid; min-width: 0; }
+.exp-item figcaption b { color: var(--navy); font-size: 13.5px; }
+.exp-item figcaption small { color: var(--muted); font-size: 12px; }
+.exp-acciones { display: flex; gap: 6px; flex-wrap: wrap; }
+.exp-acciones .btn { text-decoration: none; }
+@media (max-width: 400px) { .exp-acciones { width: 100%; } .exp-acciones .btn { flex: 1; } }

@@ -4,6 +4,7 @@
 /login       -> unica cuenta (ADMIN_EMAIL); limitado por IP y en total
 /panel       -> QR con instrucciones, graficas y sesiones (solo admin)
 /panel/sesion/<id> -> una sesion con el resultado de cada intento (solo admin)
+/panel/evidencia/<id> -> un archivo del expediente: INE, video o foto (solo admin)
 /p/<token>   -> lo que abre el QR: crea la sesion, pone la cookie y manda a /prueba
 /prueba      -> la prueba de vida (solo con QR vigente o sesion de admin)
 """
@@ -18,6 +19,7 @@ from app import db
 from app.core import acceso
 from app.core.config import settings
 from app.core.rate_limit import login_global_limiter, login_ip_limiter, qr_scan_limiter
+from app.services import expediente
 
 templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(include_in_schema=False)
@@ -87,6 +89,19 @@ async def panel(request: Request):
         "sesiones": await db.sesiones_pagina(1),
         "persistente": db.enabled(),
     })
+
+
+@router.get("/panel/evidencia/{evid_id}")
+async def panel_evidencia(request: Request, evid_id: int, descargar: bool = False):
+    """Un archivo del expediente (INE, video o foto). Solo admin; con rangos para el video."""
+    if not acceso.es_admin(request):
+        return JSONResponse({"detail": "No autorizado"}, status_code=401)
+    e = await db.obtener_evidencia(evid_id)
+    path = expediente.ruta_absoluta(e["ruta"]) if e else None
+    if path is None:
+        return JSONResponse({"detail": "No encontrado"}, status_code=404)
+    nombre = f'{e["tipo"]}-{e["creado"]:%Y%m%d-%H%M%S}{path.suffix}'
+    return expediente.servir(request, path, e["mime"], nombre, descargar)
 
 
 @router.get("/panel/sesiones")

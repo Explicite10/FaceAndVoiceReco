@@ -10,6 +10,7 @@ env/
 
 # Datos generados en tiempo de ejecucion
 /uploads/
+/evidencia/
 /models/
 *.log
 

@@ -1,9 +1,10 @@
-"""PostgreSQL: el token del QR y un resumen de cada sesion de la demo.
+"""PostgreSQL: el token del QR, un resumen de cada sesion de la demo y su expediente.
 
-Aqui nunca entran el video, la INE, la cara, la voz ni la IP: solo cuando se
-abrio cada sesion (alguien escaneo el QR), si inicio la prueba, y por cada
-intento cuando fue, si se aprobo y los codigos de lo que fallo. Sirve para
-contar cuantas personas hicieron la prueba y en que paso se quedaron.
+Por cada sesion (alguien escaneo el QR): si inicio la prueba y, por cada intento,
+cuando fue, si se aprobo, los codigos de lo que fallo y el resultado que vio.
+El expediente (INE, video, foto) se guarda en disco, en binario: aqui solo van
+sus rutas relativas, tipo, tamaño y SHA-256 (app.services.expediente). Nunca
+entran archivos ni base64 a la base, ni la IP de nadie.
 
 Sin DATABASE_URL todo queda en memoria (para desarrollo): se pierde al reiniciar.
 Las tablas y columnas se crean al arrancar si no existen.
@@ -54,6 +55,19 @@ CREATE INDEX IF NOT EXISTS intentos_creado ON intentos (creado);
 CREATE INDEX IF NOT EXISTS intentos_sesion ON intentos (sesion_id, creado);
 -- Lo que vio la persona al terminar (checks y porcentajes), para "Ver registro" del panel.
 ALTER TABLE intentos ADD COLUMN IF NOT EXISTS detalle jsonb;
+
+-- Expediente: archivos del intento guardados en disco. Solo la ruta, nunca el archivo.
+CREATE TABLE IF NOT EXISTS evidencias (
+    id         bigserial PRIMARY KEY,
+    intento_id bigint NOT NULL REFERENCES intentos(id) ON DELETE CASCADE,
+    tipo       text NOT NULL,          -- ine | video | foto
+    ruta       text NOT NULL,          -- relativa a EVIDENCIA_DIR
+    mime       text NOT NULL,
+    bytes      bigint NOT NULL,
+    sha256     text NOT NULL,
+    creado     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS evidencias_intento ON evidencias (intento_id);
 """
 
 # Bloques de la grafica de actividad.
@@ -63,6 +77,7 @@ BLOQUE = timedelta(minutes=15)
 _mem_ajustes: dict[str, str] = {}
 _mem_sesiones: dict[str, dict] = {}
 _mem_intentos: list[dict] = []
+_mem_evidencias: list[dict] = []
 
 
 def _ahora() -> datetime:
@@ -145,9 +160,10 @@ async def registrar_reto(sid: str) -> None:
 
 async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
                            fallos: list[str] | None = None, duracion_ms: int | None = None,
-                           detalle: dict | None = None) -> None:
+                           detalle: dict | None = None) -> int | None:
     """Suma una prueba terminada. `tipo`: "video" o "foto"; `fallos`: codigos de los checks que
-    fallaron; `detalle`: el resultado que vio la persona (checks y porcentajes), para el panel."""
+    fallaron; `detalle`: el resultado que vio la persona (checks y porcentajes), para el panel.
+    Devuelve el id del intento (None si la sesion ya no existe)."""
     fallos = list(fallos or [])
     if _pool is None:
         s = _mem_sesiones.get(sid)
@@ -155,9 +171,11 @@ async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
             s["pruebas"] += 1
             s["aprobadas"] += int(aprobada)
             s.update(ultima_prueba=_ahora(), ultimo_tipo=tipo, ultimo_aprobado=aprobada)
-            _mem_intentos.append({"sesion_id": sid, "creado": _ahora(), "tipo": tipo, "aprobado": aprobada,
+            iid = len(_mem_intentos) + 1
+            _mem_intentos.append({"id": iid, "sesion_id": sid, "creado": _ahora(), "tipo": tipo, "aprobado": aprobada,
                                   "fallos": fallos, "duracion_ms": duracion_ms, "detalle": detalle})
-        return
+            return iid
+        return None
     async with _pool.acquire() as conn:
         async with conn.transaction():
             n = await conn.execute(
@@ -165,12 +183,58 @@ async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
                 "ultima_prueba = now(), ultimo_tipo = $3, ultimo_aprobado = $4 WHERE id = $1",
                 sid, int(aprobada), tipo, aprobada,
             )
-            if n.endswith(" 1"):
-                await conn.execute(
-                    "INSERT INTO intentos (sesion_id, tipo, aprobado, fallos, duracion_ms, detalle) "
-                    "VALUES ($1, $2, $3, $4, $5, $6::jsonb)",
-                    sid, tipo, aprobada, fallos, duracion_ms, json.dumps(detalle) if detalle is not None else None,
-                )
+            if not n.endswith(" 1"):
+                return None
+            return await conn.fetchval(
+                "INSERT INTO intentos (sesion_id, tipo, aprobado, fallos, duracion_ms, detalle) "
+                "VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id",
+                sid, tipo, aprobada, fallos, duracion_ms, json.dumps(detalle) if detalle is not None else None,
+            )
+
+
+async def registrar_evidencias(intento_id: int, archivos: list[dict]) -> None:
+    """Las rutas de los archivos guardados del intento (tipo, ruta, mime, bytes, sha256)."""
+    if _pool is None:
+        for a in archivos:
+            _mem_evidencias.append({"id": len(_mem_evidencias) + 1, "intento_id": intento_id, **a})
+        return
+    async with _pool.acquire() as conn:
+        await conn.executemany(
+            "INSERT INTO evidencias (intento_id, tipo, ruta, mime, bytes, sha256) VALUES ($1, $2, $3, $4, $5, $6)",
+            [(intento_id, a["tipo"], a["ruta"], a["mime"], a["bytes"], a["sha256"]) for a in archivos],
+        )
+
+
+async def obtener_evidencia(evid_id: int) -> dict | None:
+    """Un archivo del expediente: ruta, mime, tipo y cuando se tomo (para servirlo al panel)."""
+    if _pool is None:
+        e = next((e for e in _mem_evidencias if e["id"] == evid_id), None)
+        if e is None:
+            return None
+        i = next(i for i in _mem_intentos if i["id"] == e["intento_id"])
+        return {**e, "creado": i["creado"]}
+    async with _pool.acquire() as conn:
+        e = await conn.fetchrow(
+            "SELECT e.id, e.tipo, e.ruta, e.mime, e.bytes, e.sha256, i.creado FROM evidencias e "
+            "JOIN intentos i ON i.id = e.intento_id WHERE e.id = $1", evid_id)
+    return dict(e) if e else None
+
+
+async def borrar_sesion(sid: str) -> bool:
+    """Borra la sesion, sus intentos, las rutas de su expediente y los archivos en disco."""
+    from app.services import expediente  # aqui para no importar FastAPI al cargar la base
+    if _pool is None:
+        if _mem_sesiones.pop(sid, None) is None:
+            return False
+        ids = {i["id"] for i in _mem_intentos if i["sesion_id"] == sid}
+        _mem_intentos[:] = [i for i in _mem_intentos if i["sesion_id"] != sid]
+        _mem_evidencias[:] = [e for e in _mem_evidencias if e["intento_id"] not in ids]
+    else:
+        async with _pool.acquire() as conn:
+            if await conn.execute("DELETE FROM sesiones WHERE id = $1", sid) == "DELETE 0":
+                return False
+    expediente.borrar_sesion(sid)
+    return True
 
 
 # ---------------------------------------------------------------- resumen para el panel
@@ -301,7 +365,7 @@ async def sesiones_pagina(pagina: int = 1, por_pagina: int = POR_PAGINA) -> dict
             "filas": [_fila(s) for s in filas]}
 
 
-def _intento(i) -> dict:
+def _intento(i, evidencias: list) -> dict:
     detalle = i["detalle"]
     if isinstance(detalle, str):  # asyncpg entrega jsonb como texto
         detalle = json.loads(detalle)
@@ -312,6 +376,9 @@ def _intento(i) -> dict:
         "fallos": list(i["fallos"] or []),
         "duracion_ms": i["duracion_ms"],
         "detalle": detalle,
+        # Archivos del expediente: el panel los pide por id; la ruta en disco nunca sale.
+        "expediente": [{"id": e["id"], "tipo": e["tipo"], "mime": e["mime"], "bytes": e["bytes"]}
+                       for e in evidencias if e["intento_id"] == i["id"]],
     }
 
 
@@ -324,6 +391,8 @@ async def detalle_sesion(sid: str) -> dict | None:
         # Empates de hora (mismo milisegundo): gana el que se registro despues.
         propios = [(n, i) for n, i in enumerate(_mem_intentos) if i["sesion_id"] == sid]
         intentos = [i for _, i in sorted(propios, key=lambda x: (x[1]["creado"], x[0]), reverse=True)]
+        ids = {i["id"] for i in intentos}
+        evidencias = [e for e in _mem_evidencias if e["intento_id"] in ids]
     else:
         async with _pool.acquire() as conn:
             s = await conn.fetchrow(
@@ -332,15 +401,18 @@ async def detalle_sesion(sid: str) -> dict | None:
             if s is None:
                 return None
             intentos = await conn.fetch(
-                "SELECT creado, tipo, aprobado, fallos, duracion_ms, detalle FROM intentos "
+                "SELECT id, creado, tipo, aprobado, fallos, duracion_ms, detalle FROM intentos "
                 "WHERE sesion_id = $1 ORDER BY creado DESC, id DESC", sid)
+            evidencias = await conn.fetch(
+                "SELECT e.id, e.intento_id, e.tipo, e.mime, e.bytes FROM evidencias e "
+                "JOIN intentos i ON i.id = e.intento_id WHERE i.sesion_id = $1 ORDER BY e.id", sid)
     return {
         "sesion": {
             **_fila(s),
             "retos": s["retos"],
             "ultima_prueba": s["ultima_prueba"].isoformat() if s["ultima_prueba"] else None,
         },
-        "intentos": [_intento(i) for i in intentos],
+        "intentos": [_intento(i, evidencias) for i in intentos],
         # Pruebas de antes de que se guardara el detalle por intento.
         "sin_detalle": max(0, s["pruebas"] - len(intentos)),
     }

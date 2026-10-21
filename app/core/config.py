@@ -164,6 +164,11 @@ class Settings(BaseModel):
     max_image_mb: int = int(os.getenv("MAX_IMAGE_MB", "8"))
     max_image_megapixels: int = int(os.getenv("MAX_IMAGE_MEGAPIXELS", "25"))  # se revisa antes de decodificar
 
+    # ---------- Expediente: INE, video y foto de cada intento ----------
+    # Carpeta donde se guardan los archivos en binario (en Docker, un volumen).
+    # En la base solo va la ruta relativa a esta carpeta, nunca el archivo.
+    evidencia_dir: str = os.getenv("EVIDENCIA_DIR", "evidencia")
+
     # ---------- Demo con QR: panel con login y acceso por codigo ----------
     # Firma de las cookies. Sin SECRET_KEY se genera una al arrancar y las
     # sesiones abiertas se pierden con cada reinicio.

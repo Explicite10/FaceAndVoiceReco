@@ -9,6 +9,7 @@ from app.core.acceso import require_acceso
 from app.core.config import settings
 from app.core.rate_limit import challenge_limiter, verification_limiter
 from app.schemas.identity import ChallengeResponse, VerifyIdentityResponse, VerifyPhotoResponse
+from app.services import expediente
 from app.services.challenge import GESTURE_LABELS, create_challenge
 from app.services.identity_verification import verify_identity
 from app.services.photo_verification import verify_photo
@@ -46,8 +47,9 @@ def _diagnosticar_voz(reporte: dict, diag: str | None) -> None:
     logger.warning("Voz fallo %s | servidor: %s | navegador: %s", fallos, error, (diag or "sin diagnostico")[:1000])
 
 
-async def _registrar(request: Request, tipo: str, reporte: dict) -> None:
-    """Suma la prueba a la sesion del QR: resultado y codigos de lo que fallo (nada de imagenes ni video)."""
+async def _registrar(request: Request, tipo: str, reporte: dict, archivos: dict[str, UploadFile]) -> None:
+    """Suma la prueba a la sesion del QR (resultado y codigos de lo que fallo) y guarda su
+    expediente en disco: la INE y el video, o la INE y la foto."""
     sid = getattr(request.state, "sesion", None)
     if not sid:
         return
@@ -56,8 +58,20 @@ async def _registrar(request: Request, tipo: str, reporte: dict) -> None:
     # Lo mismo que vio la persona (checks y porcentajes) para "Ver registro" del panel;
     # sin errores tecnicos internos ni metadatos.
     detalle = {k: reporte.get(k) for k in ("result", "checks", "details", "processing_time_ms")}
-    await db.registrar_prueba(sid, tipo, bool(reporte["result"]["approved"]), fallos,
-                              reporte.get("processing_time_ms"), detalle)
+    intento_id = await db.registrar_prueba(sid, tipo, bool(reporte["result"]["approved"]), fallos,
+                                           reporte.get("processing_time_ms"), detalle)
+    if intento_id is None:
+        return
+    # Si guardar el expediente falla, la persona igual recibe su resultado: queda en el log.
+    try:
+        guardados = await expediente.guardar(sid, intento_id, archivos)
+        try:
+            await db.registrar_evidencias(intento_id, guardados)
+        except Exception:
+            expediente.borrar_intento(sid, intento_id)  # sin rutas en la base, no se dejan archivos huerfanos
+            raise
+    except Exception:
+        logger.exception("No se pudo guardar el expediente del intento %s", intento_id)
 
 
 @router.post(
@@ -133,7 +147,7 @@ async def verify_identity_endpoint(
         ventana_frase=(frase_inicio, frase_fin) if frase_inicio is not None else None,
     ))
     _diagnosticar_voz(reporte, diag)
-    await _registrar(request, "video", reporte)
+    await _registrar(request, "video", reporte, {"ine": id_image, "video": video})
     return reporte
 
 
@@ -159,5 +173,5 @@ async def verify_photo_endpoint(
     `match_threshold_percent` fija el % minimo de similitud (default 70).
     """
     reporte = await _con_turno(verify_photo(id_image, photo, match_threshold_percent))
-    await _registrar(request, "foto", reporte)
+    await _registrar(request, "foto", reporte, {"ine": id_image, "foto": photo})
     return reporte

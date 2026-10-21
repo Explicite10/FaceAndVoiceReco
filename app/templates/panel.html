@@ -64,7 +64,7 @@
             <li>Buena iluminación</li>
             <li>Rostro descubierto</li>
             <li>Lugar sin ruido</li>
-            <li>No se guardan fotos ni videos</li>
+            <li>La INE y el video se guardan en el expediente</li>
           </ul>
         </section>
 
@@ -446,8 +446,42 @@
           html = Resultado.verdict({ result: { approved: i.aprobado }, checks }, meta) +
             '<p class="modal-nota">Este intento se guardó antes de que el panel registrara los porcentajes.</p>';
         }
-        $("regDetalle").innerHTML = html;
+        $("regDetalle").innerHTML = expedienteHtml(i.expediente || []) + html;
         $("regDetalle").scrollIntoView({ block: "nearest" });
+      }
+
+      // ---------------- expediente del intento: INE, video y foto (servidos por /panel/evidencia/<id>)
+      const ETIQUETA_ARCHIVO = { ine: "Identificación (INE)", video: "Video de la prueba de vida", foto: "Foto de la persona" };
+      const tamano = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+      const ICONO_ABRIR = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>';
+      const ICONO_BAJAR = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>';
+
+      function expedienteHtml(archivos) {
+        if (!archivos.length) {
+          return '<section class="expediente"><h3 class="exp-titulo">Expediente</h3>' +
+            '<p class="modal-nota" style="margin-top:0">Este intento no tiene archivos guardados (se hizo antes de que se guardara el expediente).</p></section>';
+        }
+        // INE y foto primero (imagenes), el video al final y a todo lo ancho.
+        const orden = { ine: 0, foto: 1, video: 2 };
+        const tarjetas = [...archivos].sort((a, b) => (orden[a.tipo] ?? 9) - (orden[b.tipo] ?? 9)).map((a) => {
+          const url = `/panel/evidencia/${a.id}`;
+          const vista = a.mime.startsWith("video/")
+            ? `<video class="exp-media" src="${url}" controls preload="metadata" playsinline></video>`
+            : a.mime.startsWith("image/")
+              ? `<a href="${url}" target="_blank" rel="noopener" class="exp-img-link"><img class="exp-media" src="${url}" alt="${esc(ETIQUETA_ARCHIVO[a.tipo] || a.tipo)}" loading="lazy"></a>`
+              : '<div class="exp-media exp-sin-vista">Sin vista previa</div>';
+          return `<figure class="exp-item ${a.tipo === "video" ? "exp-ancho" : ""}">
+              ${vista}
+              <figcaption>
+                <span><b>${esc(ETIQUETA_ARCHIVO[a.tipo] || a.tipo)}</b><small>${tamano(a.bytes)}</small></span>
+                <span class="exp-acciones">
+                  <a class="btn btn-sm" href="${url}" target="_blank" rel="noopener">${ICONO_ABRIR}Abrir</a>
+                  <a class="btn btn-sm" href="${url}?descargar=true">${ICONO_BAJAR}Descargar</a>
+                </span>
+              </figcaption>
+            </figure>`;
+        }).join("");
+        return `<section class="expediente"><h3 class="exp-titulo">Expediente</h3><div class="exp-grid">${tarjetas}</div></section>`;
       }
 
       async function actualizar() {

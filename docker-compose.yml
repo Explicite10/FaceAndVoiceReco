@@ -20,6 +20,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-pruebavida}:${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}@db:5432/${POSTGRES_DB:-pruebavida}
     ports:
       - "${API_PORT:-7860}:7860"
+    volumes:
+      # Expediente (INE, video, foto) en binario; en la base solo van las rutas.
+      - evidencia:/app/evidencia
     depends_on:
       db:
         condition: service_healthy
@@ -42,3 +45,4 @@ services:
 
 volumes:
   pgdata:
+  evidencia:

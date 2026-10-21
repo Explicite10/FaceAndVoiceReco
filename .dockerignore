@@ -13,5 +13,6 @@ venv/
 *.log
 models/
 uploads/
+evidencia/
 .env
 README.md
