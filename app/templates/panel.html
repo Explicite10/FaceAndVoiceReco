@@ -82,7 +82,7 @@
 
           <div class="charts">
             <figure class="chart-card">
-              <figcaption><b>¿Dónde se quedaron?</b><span>De quienes escanearon, cuántos llegaron a cada paso.</span></figcaption>
+              <figcaption><b>¿Dónde se quedaron?</b><span>Porcentaje de quienes escanearon que llegó a cada paso.</span></figcaption>
               <div id="gEmbudo" class="chart"></div>
             </figure>
             <figure class="chart-card">
@@ -193,16 +193,33 @@
         return grafica;
       }
 
+      // Pasos del recorrido y cuantas personas llegaron a cada uno (para la leyenda y el centro).
+      const PASOS = ["Escanearon el QR", "Iniciaron la prueba", "Enviaron a verificar", "Aprobadas"];
+      let conteosEmbudo = [0, 0, 0, 0];
+
       const graf = {
+        // Anillos: cada paso es un anillo con el % de quienes escanearon que llego ahi.
+        // Los conteos exactos van en la leyenda y el total al centro: nada queda cortado.
         embudo: crear("gEmbudo", {
-          chart: { type: "bar", height: 280 },
-          plotOptions: { bar: { horizontal: true, isFunnel: true, borderRadius: 4, barHeight: "78%", distributed: true } },
+          chart: { type: "radialBar", height: 320 },
+          labels: PASOS,
           colors: [C.navy, C.azul, C.celeste, C.ok],
-          dataLabels: { enabled: true, formatter: (v, o) => `${o.w.globals.labels[o.dataPointIndex]}: ${v}`,
-                        dropShadow: { enabled: false }, style: { fontSize: "13px", fontWeight: 600 } },
-          legend: { show: false },
-          xaxis: { categories: [] },
-          series: [{ name: "Personas", data: [] }],
+          plotOptions: { radialBar: {
+            hollow: { size: "32%" },
+            track: { background: "#eef2f6", margin: 5 },
+            dataLabels: {
+              name: { fontSize: "12px", color: C.texto, offsetY: -6 },
+              value: { fontSize: "20px", fontWeight: 700, color: C.navy, offsetY: 4, formatter: (v) => `${Math.round(v)}%` },
+              total: { show: true, label: "Escanearon", fontSize: "12px", color: C.texto,
+                       formatter: () => conteosEmbudo[0] ?? 0 },
+            },
+          } },
+          stroke: { lineCap: "round" },
+          legend: { show: true, position: "bottom", fontSize: "13px",
+                    // En celular no hay cursor para ver el % de cada anillo: va tambien aqui.
+                    formatter: (nombre, o) => `${nombre}: <b>${conteosEmbudo[o.seriesIndex] ?? 0}</b>` +
+                      (conteosEmbudo[0] ? ` (${Math.round((conteosEmbudo[o.seriesIndex] / conteosEmbudo[0]) * 100)}%)` : "") },
+          series: [],
         }),
         resultado: crear("gResultado", {
           chart: { type: "donut", height: 280 },
@@ -237,10 +254,9 @@
 
       function pintarGraficas(r) {
         const e = r.embudo;
-        graf.embudo?.updateOptions({
-          xaxis: { categories: ["Escanearon el QR", "Iniciaron la prueba", "Enviaron a verificar", "Aprobadas"] },
-          series: [{ name: "Personas", data: e.escanearon ? [e.escanearon, e.iniciaron, e.verificaron, e.aprobadas] : [] }],
-        });
+        conteosEmbudo = [e.escanearon, e.iniciaron, e.verificaron, e.aprobadas];
+        const porcentaje = (n) => Math.round((n / e.escanearon) * 1000) / 10;
+        graf.embudo?.updateSeries(e.escanearon ? conteosEmbudo.map(porcentaje) : []);
         const res = r.resultado;
         const total = res.aprobadas + res.no_aprobadas + res.abandonaron;
         graf.resultado?.updateSeries(total ? [res.aprobadas, res.no_aprobadas, res.abandonaron] : []);
