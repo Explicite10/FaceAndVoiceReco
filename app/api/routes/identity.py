@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
 from app import db
 from app.core.acceso import require_acceso
@@ -72,6 +72,20 @@ async def _registrar(request: Request, tipo: str, reporte: dict, archivos: dict[
             raise
     except Exception:
         logger.exception("No se pudo guardar el expediente del intento %s", intento_id)
+
+
+@router.post("/visita", status_code=204, include_in_schema=False,
+             dependencies=[Depends(require_acceso), Depends(challenge_limiter)])
+async def visita(request: Request) -> Response:
+    """La pagina de la prueba cargo en un navegador real: ahora si se registra la sesion.
+
+    El enlace del QR solo entrega la cookie; asi los robots que nada mas visitan el
+    enlace (revisores de correo/chat, escaneres) no aparecen en el tablero.
+    """
+    sid = getattr(request.state, "sesion", None)
+    if sid:
+        await db.asegurar_sesion(sid)
+    return Response(status_code=204)
 
 
 @router.post(

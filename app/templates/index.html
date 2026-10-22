@@ -1361,6 +1361,8 @@
       $("result").innerHTML = emptyState("Sube la identificación, graba la prueba de vida y presiona Verificar identidad.");
       dropzone("idFile");
       camaraPara("idFileCam", "idFile");
+      // La pagina cargo en un navegador real: ahora si cuenta como escaneo en el tablero.
+      fetch("api/visita", { method: "POST" }).catch(() => {});
       refreshSend();
     </script>
 

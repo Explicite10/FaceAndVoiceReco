@@ -9,6 +9,7 @@
 /prueba      -> la prueba de vida (solo con QR vigente o sesion de admin)
 """
 import asyncio
+import logging
 
 import segno
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -23,6 +24,7 @@ from app.services import expediente
 
 templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(include_in_schema=False)
+logger = logging.getLogger("uvicorn.error")
 
 
 def _ir(url: str) -> RedirectResponse:
@@ -159,10 +161,14 @@ async def entrar_con_qr(request: Request, token: str):
             return _sin_acceso(request, 429, espera=int(e.headers.get("Retry-After", "30")))
     if len(token) > 100 or not acceso.token_qr_valido(token):
         return _sin_acceso(request, 404)
-    if sid:
-        await db.asegurar_sesion(sid)  # por si se borraron los registros mientras tenia la cookie
-    else:
-        sid = await db.crear_sesion()
+    # Que navegador abre el enlace: para distinguir personas de robots (revisores de
+    # enlaces de correo/chat, escaneres) si el tablero vuelve a llenarse de golpe.
+    agente = (request.headers.get("user-agent") or "-").replace("\n", " ")[:160]
+    logger.info("QR abierto (%s): %s", "sesion existente" if sid else "nuevo", agente)
+    # El enlace solo entrega la cookie. El registro en la base se crea cuando la pagina de
+    # la prueba carga en un navegador real (POST /api/visita) o la persona pide un reto:
+    # un robot que solo visita el enlace no infla el tablero.
+    sid = sid or db.nuevo_id_sesion()
     resp = _ir("/prueba")
     # Lax y no Strict: el QR se abre desde la app de la camara (otro "sitio").
     acceso.poner_cookie(resp, request, acceso.COOKIE_ACCESO,

@@ -117,8 +117,10 @@ def test_reescanear_no_cuenta_y_el_limite_muestra_pagina(monkeypatch):
     persona = cliente()
     for _ in range(10):  # la misma persona recargando: no cuenta despues de la primera
         assert persona.get(f"/p/{token}").status_code == 303
+    persona.post("/api/visita")                                        # la pagina cargo
     otras = [cliente() for _ in range(2)]
     assert all(c.get(f"/p/{token}").status_code == 303 for c in otras)  # 3 personas = limite
+    assert all(c.post("/api/visita").status_code == 204 for c in otras)
     r = cliente().get(f"/p/{token}")
     assert r.status_code == 429 and "Mucha gente" in r.text and int(r.headers["retry-after"]) > 0
     assert "text/html" in r.headers["content-type"]                   # pagina, no JSON
@@ -137,12 +139,28 @@ def test_borrar_todo_no_deja_sin_contar_a_quien_ya_entro():
     r = asyncio.run(db.resumen())
     assert r["sesiones"] == 1 and r["embudo"]["iniciaron"] == 1  # y se vuelve a contar
     db._mem_sesiones.clear()
-    assert c.get(f"/p/{token}").status_code == 303            # re-escanear tambien la recrea
+    assert c.get(f"/p/{token}").status_code == 303            # re-escanear y cargar la pagina la recrea
+    assert c.post("/api/visita").status_code == 204
     assert asyncio.run(db.resumen())["sesiones"] == 1
     sid = next(iter(db._mem_sesiones))
     db._mem_sesiones.clear()
     assert asyncio.run(db.registrar_prueba(sid, "video", True)) is not None  # y enviar una prueba
     assert asyncio.run(db.resumen())["personas"] == 1
+
+
+def test_robot_que_solo_visita_el_enlace_no_cuenta():
+    token = asyncio.run(db.qr_token())
+    for _ in range(20):  # como un revisor de enlaces: sigue la redireccion, sin JavaScript
+        robot = cliente()
+        assert robot.get(f"/p/{token}").status_code == 303
+        assert robot.get("/prueba").status_code == 200
+    assert asyncio.run(db.resumen())["sesiones"] == 0
+    persona = cliente()
+    persona.get(f"/p/{token}")
+    assert persona.post("/api/visita").status_code == 204      # la pagina cargo en un navegador
+    assert persona.post("/api/visita").status_code == 204      # recargar no duplica
+    assert asyncio.run(db.resumen())["sesiones"] == 1
+    assert cliente().post("/api/visita").status_code == 401    # sin cookie del QR no se registra nada
 
 
 def test_limite_de_escaneos_por_defecto_alto():

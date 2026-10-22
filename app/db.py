@@ -142,8 +142,13 @@ def _sesion_vacia(sid: str) -> dict:
             "ultima_prueba": None, "ultimo_tipo": None, "ultimo_aprobado": None}
 
 
+def nuevo_id_sesion() -> str:
+    """Id para la cookie de quien abre el QR; el registro se crea despues (asegurar_sesion)."""
+    return secrets.token_urlsafe(16)
+
+
 async def crear_sesion() -> str:
-    sid = secrets.token_urlsafe(16)
+    sid = nuevo_id_sesion()
     if _pool is None:
         _mem_sesiones[sid] = _sesion_vacia(sid)
         return sid
