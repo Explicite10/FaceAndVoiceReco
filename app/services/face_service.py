@@ -12,6 +12,7 @@ from app.services.upload_io import read_upload_limited
 from app.services.face_engine import (
     cosine_similarity, detect_faces, embed, pick_best_face
 )
+from app.services.orientacion import enderezar_imagen
 from app.services.video_face import best_faces_by_segment
 
 # MPO es como Pillow reporta los JPEG de varias capas de algunos celulares.
@@ -52,9 +53,12 @@ async def read_as_np_rgb(upload: UploadFile, field_name: str) -> np.ndarray:
         # Las fotos de celular suelen venir giradas con una etiqueta EXIF; sin
         # aplicarla, la cara queda de lado y el detector no la encuentra.
         pil = ImageOps.exif_transpose(img).convert("RGB")
-        return np.array(pil)  # RGB
+        rgb = np.array(pil)  # RGB
     except Exception:
         raise HTTPException(status_code=400, detail=f"No pude leer '{field_name}'. ¿Archivo dañado?")
+    # Ademas del EXIF, la credencial puede venir girada en la foto misma (tomada con el
+    # celular en vertical): se endereza para que la cara llegue derecha a la comparacion.
+    return (await asyncio.to_thread(enderezar_imagen, rgb))[0]
 
 
 def similarity_to_percent_sigmoid(sim: float, mid: float, k: float) -> float:

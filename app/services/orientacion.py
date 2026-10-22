@@ -22,8 +22,27 @@ _MUESTRAS = 8           # cuadros que se revisan
 _CADA = 10              # uno de cada N cuadros leidos
 # Otro giro solo gana si es claramente mejor que dejarlo como viene.
 _VENTAJA = 1.5
+# En una sola imagen: una cara de lado a veces se detecta con confianza media (0.7);
+# derecha, casi siempre arriba de 0.9. Basta con que el otro giro sea 15% mejor.
+_VENTAJA_IMAGEN = 1.15
 
 _cache: dict[tuple, int] = {}
+
+
+def enderezar_imagen(rgb):
+    """(imagen, grados) con la cara derecha. Para fotos de la INE o selfies tomadas con
+    el celular de lado: el EXIF ya se aplico, pero la credencial puede venir girada en
+    la foto misma. Mismo criterio que el video: otro giro solo gana si es claramente mejor."""
+    puntajes = {}
+    for angulo in (0, 90, 180, 270):
+        cara = pick_best_face(detect_faces(girar(rgb, angulo)))
+        puntajes[angulo] = float(cara.score) if cara is not None else 0.0
+    mejor = max(puntajes, key=puntajes.get)
+    angulo = mejor if mejor and puntajes[mejor] > _VENTAJA_IMAGEN * puntajes[0] else 0
+    if angulo:
+        logger.info("Imagen girada: se corrige %s grados (puntajes %s)", angulo,
+                    {k: round(v, 2) for k, v in puntajes.items()})
+    return girar(rgb, angulo), angulo
 
 
 def girar(frame, angulo: int):

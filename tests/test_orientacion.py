@@ -53,3 +53,16 @@ def test_sin_caras_no_se_gira(tmp_path):
 
 def test_archivo_inexistente(tmp_path):
     assert ori.orientacion(str(tmp_path / "no-existe.mp4")) == 0
+
+
+def test_imagen_de_lado_se_endereza():
+    # INE fotografiada con el celular en vertical: la marca (la "cara") quedo abajo a la izquierda.
+    img = np.zeros((240, 320, 3), np.uint8); img[-60:, :60] = (255, 0, 0)  # RGB: rojo
+    derecha, angulo = ori.enderezar_imagen(img)
+    assert angulo == 90 and derecha[:40, :40, 0].mean() > 200
+
+
+def test_imagen_derecha_no_se_toca():
+    img = np.zeros((240, 320, 3), np.uint8); img[:60, :60] = (255, 0, 0)
+    derecha, angulo = ori.enderezar_imagen(img)
+    assert angulo == 0 and derecha is img
