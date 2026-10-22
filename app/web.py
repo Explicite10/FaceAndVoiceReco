@@ -159,7 +159,10 @@ async def entrar_con_qr(request: Request, token: str):
             return _sin_acceso(request, 429, espera=int(e.headers.get("Retry-After", "30")))
     if len(token) > 100 or not acceso.token_qr_valido(token):
         return _sin_acceso(request, 404)
-    sid = sid or await db.crear_sesion()
+    if sid:
+        await db.asegurar_sesion(sid)  # por si se borraron los registros mientras tenia la cookie
+    else:
+        sid = await db.crear_sesion()
     resp = _ir("/prueba")
     # Lax y no Strict: el QR se abre desde la app de la camara (otro "sitio").
     acceso.poner_cookie(resp, request, acceso.COOKIE_ACCESO,

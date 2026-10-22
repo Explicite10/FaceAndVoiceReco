@@ -126,6 +126,25 @@ def test_reescanear_no_cuenta_y_el_limite_muestra_pagina(monkeypatch):
     assert asyncio.run(db.resumen())["sesiones"] == 3
 
 
+def test_borrar_todo_no_deja_sin_contar_a_quien_ya_entro():
+    c = cliente()
+    token = asyncio.run(db.qr_token())
+    c.get(f"/p/{token}")
+    # Se borran todos los registros mientras la persona sigue con su cookie vigente.
+    db._mem_sesiones.clear()
+    db._mem_intentos.clear()
+    assert c.post("/api/challenge").status_code == 200        # sigue pudiendo usar la prueba
+    r = asyncio.run(db.resumen())
+    assert r["sesiones"] == 1 and r["embudo"]["iniciaron"] == 1  # y se vuelve a contar
+    db._mem_sesiones.clear()
+    assert c.get(f"/p/{token}").status_code == 303            # re-escanear tambien la recrea
+    assert asyncio.run(db.resumen())["sesiones"] == 1
+    sid = next(iter(db._mem_sesiones))
+    db._mem_sesiones.clear()
+    assert asyncio.run(db.registrar_prueba(sid, "video", True)) is not None  # y enviar una prueba
+    assert asyncio.run(db.resumen())["personas"] == 1
+
+
 def test_limite_de_escaneos_por_defecto_alto():
     assert settings.qr_scans_per_ip >= 300
 

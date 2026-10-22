@@ -137,25 +137,44 @@ async def rotar_qr() -> str:
 
 # ---------------------------------------------------------------- sesiones
 
+def _sesion_vacia(sid: str) -> dict:
+    return {"id": sid, "creada": _ahora(), "pruebas": 0, "aprobadas": 0, "retos": 0,
+            "ultima_prueba": None, "ultimo_tipo": None, "ultimo_aprobado": None}
+
+
 async def crear_sesion() -> str:
     sid = secrets.token_urlsafe(16)
     if _pool is None:
-        _mem_sesiones[sid] = {"id": sid, "creada": _ahora(), "pruebas": 0, "aprobadas": 0, "retos": 0,
-                              "ultima_prueba": None, "ultimo_tipo": None, "ultimo_aprobado": None}
+        _mem_sesiones[sid] = _sesion_vacia(sid)
         return sid
     async with _pool.acquire() as conn:
         await conn.execute("INSERT INTO sesiones (id) VALUES ($1)", sid)
     return sid
 
 
+# Si se borraron los registros (p. ej. para empezar en cero) mientras alguien tenia la
+# cookie vigente, su sesion se vuelve a crear al usarla: nadie se queda sin contarse.
+_ASEGURAR = "INSERT INTO sesiones (id) VALUES ($1) ON CONFLICT (id) DO NOTHING"
+
+
+async def asegurar_sesion(sid: str) -> None:
+    """Crea la sesion si ya no existe en la base (la cookie sigue siendo valida)."""
+    if _pool is None:
+        _mem_sesiones.setdefault(sid, _sesion_vacia(sid))
+        return
+    async with _pool.acquire() as conn:
+        await conn.execute(_ASEGURAR, sid)
+
+
 async def registrar_reto(sid: str) -> None:
     """La persona pidio un reto: activo la camara para grabar la prueba de vida."""
     if _pool is None:
-        if sid in _mem_sesiones:
-            _mem_sesiones[sid]["retos"] += 1
+        _mem_sesiones.setdefault(sid, _sesion_vacia(sid))["retos"] += 1
         return
     async with _pool.acquire() as conn:
-        await conn.execute("UPDATE sesiones SET retos = retos + 1 WHERE id = $1", sid)
+        async with conn.transaction():
+            await conn.execute(_ASEGURAR, sid)
+            await conn.execute("UPDATE sesiones SET retos = retos + 1 WHERE id = $1", sid)
 
 
 async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
@@ -163,21 +182,20 @@ async def registrar_prueba(sid: str, tipo: str, aprobada: bool,
                            detalle: dict | None = None) -> int | None:
     """Suma una prueba terminada. `tipo`: "video" o "foto"; `fallos`: codigos de los checks que
     fallaron; `detalle`: el resultado que vio la persona (checks y porcentajes), para el panel.
-    Devuelve el id del intento (None si la sesion ya no existe)."""
+    Devuelve el id del intento. Si la sesion se habia borrado, se vuelve a crear."""
     fallos = list(fallos or [])
     if _pool is None:
-        s = _mem_sesiones.get(sid)
-        if s:
-            s["pruebas"] += 1
-            s["aprobadas"] += int(aprobada)
-            s.update(ultima_prueba=_ahora(), ultimo_tipo=tipo, ultimo_aprobado=aprobada)
-            iid = len(_mem_intentos) + 1
-            _mem_intentos.append({"id": iid, "sesion_id": sid, "creado": _ahora(), "tipo": tipo, "aprobado": aprobada,
-                                  "fallos": fallos, "duracion_ms": duracion_ms, "detalle": detalle})
-            return iid
-        return None
+        s = _mem_sesiones.setdefault(sid, _sesion_vacia(sid))
+        s["pruebas"] += 1
+        s["aprobadas"] += int(aprobada)
+        s.update(ultima_prueba=_ahora(), ultimo_tipo=tipo, ultimo_aprobado=aprobada)
+        iid = max((i["id"] for i in _mem_intentos), default=0) + 1  # unico aunque se borren intentos
+        _mem_intentos.append({"id": iid, "sesion_id": sid, "creado": _ahora(), "tipo": tipo, "aprobado": aprobada,
+                              "fallos": fallos, "duracion_ms": duracion_ms, "detalle": detalle})
+        return iid
     async with _pool.acquire() as conn:
         async with conn.transaction():
+            await conn.execute(_ASEGURAR, sid)
             n = await conn.execute(
                 "UPDATE sesiones SET pruebas = pruebas + 1, aprobadas = aprobadas + $2::int, "
                 "ultima_prueba = now(), ultimo_tipo = $3, ultimo_aprobado = $4 WHERE id = $1",
