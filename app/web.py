@@ -12,14 +12,14 @@ import asyncio
 import logging
 
 import segno
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import db
 from app.core import acceso
 from app.core.config import settings
-from app.core.rate_limit import login_global_limiter, login_ip_limiter, qr_scan_limiter
+from app.core.rate_limit import login_global_limiter, login_ip_limiter
 from app.services import expediente
 
 templates = Jinja2Templates(directory="app/templates")
@@ -142,23 +142,17 @@ async def nuevo_qr(request: Request):
 
 # ---------------------------------------------------------------- QR y prueba
 
-def _sin_acceso(request: Request, status: int, espera: int | None = None) -> HTMLResponse:
-    resp = templates.TemplateResponse("acceso.html", {"request": request, "espera": espera}, status_code=status)
-    if espera:
-        resp.headers["Retry-After"] = str(espera)
-    return resp
+def _sin_acceso(request: Request, status: int) -> HTMLResponse:
+    return templates.TemplateResponse("acceso.html", {"request": request}, status_code=status)
 
 
 @router.get("/p/{token}")
 async def entrar_con_qr(request: Request, token: str):
-    # Si ya tenia sesion (volvio a escanear o recargo), se conserva y no cuenta para el limite.
+    # Si ya tenia sesion (volvio a escanear o recargo), se conserva.
+    # Abrir el enlace no cuenta para el limite: solo entrega la cookie (no cuesta nada) y
+    # las extensiones de iPhone o los revisores de enlaces lo visitan cientos de veces
+    # seguidas. El limite se aplica al crear el registro, en POST /api/visita.
     sid = acceso.sesion_participante(request)
-    if not sid:
-        try:
-            qr_scan_limiter(request)
-        except HTTPException as e:
-            # Pagina para el celular, no un JSON: "mucha gente entrando, intenta en un momento".
-            return _sin_acceso(request, 429, espera=int(e.headers.get("Retry-After", "30")))
     if len(token) > 100 or not acceso.token_qr_valido(token):
         return _sin_acceso(request, 404)
     # Que navegador abre el enlace: para distinguir personas de robots (revisores de

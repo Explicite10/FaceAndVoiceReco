@@ -110,21 +110,23 @@ def test_entrar_con_qr_abre_la_prueba_y_cuenta_la_sesion():
     assert asyncio.run(db.resumen())["sesiones"] == 1
 
 
-def test_reescanear_no_cuenta_y_el_limite_muestra_pagina(monkeypatch):
+def test_rafaga_de_robots_no_gasta_el_limite(monkeypatch):
     # Todos llegan con la misma IP (como detras del proxy). Limite bajo para la prueba.
     monkeypatch.setattr(rate_limit.qr_scan_limiter, "limit", 3)
     token = asyncio.run(db.qr_token())
-    persona = cliente()
-    for _ in range(10):  # la misma persona recargando: no cuenta despues de la primera
-        assert persona.get(f"/p/{token}").status_code == 303
-    persona.post("/api/visita")                                        # la pagina cargo
-    otras = [cliente() for _ in range(2)]
-    assert all(c.get(f"/p/{token}").status_code == 303 for c in otras)  # 3 personas = limite
-    assert all(c.post("/api/visita").status_code == 204 for c in otras)
-    r = cliente().get(f"/p/{token}")
-    assert r.status_code == 429 and "Mucha gente" in r.text and int(r.headers["retry-after"]) > 0
-    assert "text/html" in r.headers["content-type"]                   # pagina, no JSON
-    assert persona.get(f"/p/{token}").status_code == 303               # quien ya entro sigue entrando
+    for _ in range(200):  # una extension de iPhone abriendo el enlace sin parar
+        assert cliente().get(f"/p/{token}").status_code == 303
+    personas = [cliente() for _ in range(3)]
+    for c in personas:
+        c.get(f"/p/{token}")
+        assert c.post("/api/visita").status_code == 204       # el limite sigue completo
+        for _ in range(5):                                       # recargar no gasta limite
+            c.get(f"/p/{token}")
+            assert c.post("/api/visita").status_code == 204
+    assert asyncio.run(db.resumen())["sesiones"] == 3
+    cuarta = cliente()
+    cuarta.get(f"/p/{token}")
+    assert cuarta.post("/api/visita").status_code == 429         # el limite aplica a registros nuevos
     assert asyncio.run(db.resumen())["sesiones"] == 3
 
 

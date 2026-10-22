@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from app import db
 from app.core.acceso import require_acceso
 from app.core.config import settings
-from app.core.rate_limit import challenge_limiter, verification_limiter
+from app.core.rate_limit import challenge_limiter, qr_scan_limiter, verification_limiter
 from app.schemas.identity import ChallengeResponse, VerifyIdentityResponse, VerifyPhotoResponse
 from app.services import expediente
 from app.services.challenge import GESTURE_LABELS, create_challenge
@@ -83,7 +83,8 @@ async def visita(request: Request) -> Response:
     enlace (revisores de correo/chat, escaneres) no aparecen en el tablero.
     """
     sid = getattr(request.state, "sesion", None)
-    if sid:
+    if sid and not await db.sesion_existe(sid):
+        qr_scan_limiter(request)  # registros nuevos por IP: aqui ya solo llegan navegadores reales
         await db.asegurar_sesion(sid)
     return Response(status_code=204)
 

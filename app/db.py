@@ -157,6 +157,13 @@ async def crear_sesion() -> str:
     return sid
 
 
+async def sesion_existe(sid: str) -> bool:
+    if _pool is None:
+        return sid in _mem_sesiones
+    async with _pool.acquire() as conn:
+        return bool(await conn.fetchval("SELECT 1 FROM sesiones WHERE id = $1", sid))
+
+
 # Si se borraron los registros (p. ej. para empezar en cero) mientras alguien tenia la
 # cookie vigente, su sesion se vuelve a crear al usarla: nadie se queda sin contarse.
 _ASEGURAR = "INSERT INTO sesiones (id) VALUES ($1) ON CONFLICT (id) DO NOTHING"

@@ -16,25 +16,10 @@
     <main class="center-page">
       <div class="card auth-card" style="text-align:center">
         <img class="auth-logo" src="/static/logo.png" alt="" />
-        {% if espera %}
-        <h1>Mucha gente está entrando</h1>
-        <p class="sub" style="margin-bottom:0">Espera un momento: entrarás automáticamente en
-          <b id="cuenta">{{ espera }}</b> s.</p>
-        <script>
-          // Reintenta sola al terminar la espera (la misma URL del QR).
-          let s = {{ espera | int }};
-          const t = setInterval(() => {
-            s -= 1;
-            document.getElementById("cuenta").textContent = Math.max(s, 0);
-            if (s <= 0) { clearInterval(t); location.reload(); }
-          }, 1000);
-        </script>
-        {% else %}
         <h1>Escanea el código QR</h1>
         <p class="sub" style="margin-bottom:0">Para hacer la prueba de vida, escanea con la cámara de tu celular
           el código que se muestra en la presentación. Si ya lo escaneaste, es posible que tu acceso
           haya vencido: vuelve a escanearlo.</p>
-        {% endif %}
       </div>
     </main>
   </body>
