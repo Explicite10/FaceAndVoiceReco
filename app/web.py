@@ -11,7 +11,7 @@
 import asyncio
 
 import segno
-from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -140,16 +140,26 @@ async def nuevo_qr(request: Request):
 
 # ---------------------------------------------------------------- QR y prueba
 
-def _sin_acceso(request: Request, status: int) -> HTMLResponse:
-    return templates.TemplateResponse("acceso.html", {"request": request}, status_code=status)
+def _sin_acceso(request: Request, status: int, espera: int | None = None) -> HTMLResponse:
+    resp = templates.TemplateResponse("acceso.html", {"request": request, "espera": espera}, status_code=status)
+    if espera:
+        resp.headers["Retry-After"] = str(espera)
+    return resp
 
 
-@router.get("/p/{token}", dependencies=[Depends(qr_scan_limiter)])
+@router.get("/p/{token}")
 async def entrar_con_qr(request: Request, token: str):
+    # Si ya tenia sesion (volvio a escanear o recargo), se conserva y no cuenta para el limite.
+    sid = acceso.sesion_participante(request)
+    if not sid:
+        try:
+            qr_scan_limiter(request)
+        except HTTPException as e:
+            # Pagina para el celular, no un JSON: "mucha gente entrando, intenta en un momento".
+            return _sin_acceso(request, 429, espera=int(e.headers.get("Retry-After", "30")))
     if len(token) > 100 or not acceso.token_qr_valido(token):
         return _sin_acceso(request, 404)
-    # Si ya tenia sesion con este QR (volvio a escanear), se conserva la misma.
-    sid = acceso.sesion_participante(request) or await db.crear_sesion()
+    sid = sid or await db.crear_sesion()
     resp = _ir("/prueba")
     # Lax y no Strict: el QR se abre desde la app de la camara (otro "sitio").
     acceso.poner_cookie(resp, request, acceso.COOKIE_ACCESO,

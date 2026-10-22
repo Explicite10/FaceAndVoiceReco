@@ -184,8 +184,11 @@ class Settings(BaseModel):
     login_attempts_per_ip: int = 5
     login_attempts_global: int = 30
     login_window_sec: int = 300
-    # Escaneos del QR (sesiones nuevas) por IP en la ventana.
-    qr_scans_per_ip: int = 30
+    # Sesiones nuevas (escaneos del QR) por IP en la ventana. Alto a proposito: detras
+    # del proxy todos los asistentes pueden llegar con la misma IP (NAT), y crear una
+    # sesion es barato; lo costoso (analizar video) ya se limita por sesion.
+    # Volver a escanear con una sesion vigente no cuenta.
+    qr_scans_per_ip: int = int(os.getenv("QR_SCANS_PER_IP", "300"))
     qr_scan_window_sec: int = 600
 
 settings = Settings()

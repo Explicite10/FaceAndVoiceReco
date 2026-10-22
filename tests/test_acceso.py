@@ -110,6 +110,26 @@ def test_entrar_con_qr_abre_la_prueba_y_cuenta_la_sesion():
     assert asyncio.run(db.resumen())["sesiones"] == 1
 
 
+def test_reescanear_no_cuenta_y_el_limite_muestra_pagina(monkeypatch):
+    # Todos llegan con la misma IP (como detras del proxy). Limite bajo para la prueba.
+    monkeypatch.setattr(rate_limit.qr_scan_limiter, "limit", 3)
+    token = asyncio.run(db.qr_token())
+    persona = cliente()
+    for _ in range(10):  # la misma persona recargando: no cuenta despues de la primera
+        assert persona.get(f"/p/{token}").status_code == 303
+    otras = [cliente() for _ in range(2)]
+    assert all(c.get(f"/p/{token}").status_code == 303 for c in otras)  # 3 personas = limite
+    r = cliente().get(f"/p/{token}")
+    assert r.status_code == 429 and "Mucha gente" in r.text and int(r.headers["retry-after"]) > 0
+    assert "text/html" in r.headers["content-type"]                   # pagina, no JSON
+    assert persona.get(f"/p/{token}").status_code == 303               # quien ya entro sigue entrando
+    assert asyncio.run(db.resumen())["sesiones"] == 3
+
+
+def test_limite_de_escaneos_por_defecto_alto():
+    assert settings.qr_scans_per_ip >= 300
+
+
 def test_qr_nuevo_invalida_el_anterior():
     admin, persona = cliente(), cliente()
     login(admin)
