@@ -114,6 +114,14 @@
       }
       .dropzone:hover, .dropzone.is-drag, .dropzone:focus-within { border-color: var(--blue-mid); background: var(--tint); }
       .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+      /* Celular/tablet: "Tomar foto" abre la camara directo (en Android 13+ el selector de
+         archivos ya no la ofrece) y "Subir archivo" la galeria. En computadora, la zona de arrastrar. */
+      .captura-movil { display: none; gap: 10px; }
+      .captura-movil .btn { flex: 1; min-height: 48px; padding: 12px 10px; white-space: nowrap; }
+      @media (hover: none) and (pointer: coarse) {
+        .captura-movil { display: flex; }
+        .dropzone { display: none; }
+      }
       .dz-icon {
         width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center;
         background: var(--surface); color: var(--blue-mid); border: 1px solid var(--border);
@@ -329,6 +337,10 @@
                 <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h4M14 14h4"/></svg></span>
                 <span><b>Arrastra la imagen o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 8 MB</small></span>
               </label>
+              <div class="captura-movil">
+                <label class="btn btn-primary"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>Tomar foto<input type="file" id="idFileCam" accept="image/*" capture="environment" hidden /></label>
+                <label class="btn" for="idFile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>Subir archivo</label>
+              </div>
               <div id="idPrevBox"></div>
             </article>
 
@@ -445,6 +457,10 @@
                 <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h4M14 14h4"/></svg></span>
                 <span><b>Arrastra la imagen o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 8 MB</small></span>
               </label>
+              <div class="captura-movil">
+                <label class="btn btn-primary"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>Tomar foto<input type="file" id="pIdFileCam" accept="image/*" capture="environment" hidden /></label>
+                <label class="btn" for="pIdFile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>Subir archivo</label>
+              </div>
               <div id="pIdPrevBox"></div>
             </article>
 
@@ -461,6 +477,10 @@
                 <span class="dz-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></span>
                 <span><b>Arrastra la foto o haz clic para elegirla</b><small>JPG, PNG o WEBP · máximo 8 MB</small></span>
               </label>
+              <div class="captura-movil">
+                <label class="btn btn-primary"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>Tomar foto<input type="file" id="pPhotoFileCam" accept="image/*" capture="user" hidden /></label>
+                <label class="btn" for="pPhotoFile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>Subir archivo</label>
+              </div>
 
               <div class="divider">o tómala con la cámara</div>
               <div class="stage encuadre" id="pStage" hidden>
@@ -596,6 +616,19 @@
       }
 
       // Arrastrar y soltar: asigna el archivo al input y dispara su onchange.
+      // "Tomar foto": pasa la foto de la camara al input de siempre y dispara su onchange.
+      function camaraPara(camId, inputId) {
+        $(camId).addEventListener("change", (e) => {
+          const f = e.target.files[0];
+          if (!f) return;
+          const dt = new DataTransfer();
+          dt.items.add(f);
+          $(inputId).files = dt.files;
+          $(inputId).dispatchEvent(new Event("change"));
+          e.target.value = "";  // permite volver a tomarla
+        });
+      }
+
       function dropzone(inputId) {
         const input = $(inputId), zone = input.closest(".dropzone");
         ["dragenter", "dragover"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add("is-drag"); }));
@@ -777,6 +810,36 @@
         $("pasoIcono").classList.toggle("go", animar);
         $("instruccion").textContent = texto;
         $("pista").textContent = pista;
+      }
+
+      // Lienzo que copia la vista de la camara, ya derecha (el navegador aplica la rotacion
+      // del sensor al mostrarla). Devuelve { pista, detener } o null si no se puede: entonces
+      // se graba la camara directo y el servidor endereza el video si hace falta.
+      function crearLienzo(video) {
+        const w0 = video.videoWidth, h0 = video.videoHeight;
+        if (!w0 || !h0 || !HTMLCanvasElement.prototype.captureStream) return null;
+        const escala = Math.min(1, 640 / Math.max(w0, h0));   // como maximo 640 px de lado
+        const lienzo = document.createElement("canvas");
+        lienzo.width = Math.round(w0 * escala);
+        lienzo.height = Math.round(h0 * escala);
+        const ctx = lienzo.getContext("2d", { alpha: false });
+        let pista;
+        try {
+          ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
+          pista = lienzo.captureStream(30).getVideoTracks();
+        } catch {
+          return null;
+        }
+        if (!pista.length) return null;
+        // Sin espejo: se dibujan los pixeles tal cual (el espejo de la vista es solo CSS),
+        // igual que antes; la izquierda del usuario queda a la derecha de la imagen.
+        const reloj = setInterval(() => {
+          if (video.readyState >= 2) ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
+        }, 1000 / 30);
+        return {
+          pista,
+          detener() { clearInterval(reloj); pista.forEach((t) => t.stop()); },
+        };
       }
 
       function pickMime() {
@@ -963,15 +1026,23 @@
         if (!hayImagen) $("pista").textContent = "Se ve muy oscuro. Busca más luz para que te veamos bien.";
         listo();
 
+        // Se graba lo que se ve, ya derecho: cada cuadro de la camara se dibuja en un lienzo
+        // y se graba el lienzo con el audio del microfono. Asi el video sale derecho en
+        // cualquier celular (algunos, sobre todo iPhone, grababan la imagen "acostada").
+        const enLienzo = crearLienzo(video);
+        const streamGrabacion = enLienzo
+          ? new MediaStream([...enLienzo.pista, ...stream.getAudioTracks()])
+          : stream;
+
         const mime = pickMime();
         const chunks = [];
         // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida.
         let recorder;
         try {
-          recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
+          recorder = new MediaRecorder(streamGrabacion, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
         } catch {
           // Algunos navegadores rechazan el formato o la tasa: se deja que elijan.
-          recorder = new MediaRecorder(stream);
+          recorder = new MediaRecorder(streamGrabacion);
         }
         recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
         // Pedazos de 1 s solo en WebM (Chrome, Android); en Safari (MP4) una sola pieza, como siempre.
@@ -1149,9 +1220,11 @@
             navegador: navigator.userAgent.slice(0, 200),
             formato: recorder.mimeType || mime || "(del navegador)",
             pedazos: chunks.length, enPedazos, bytes: chunks.reduce((n, c) => n + c.size, 0), vigia: usoVigia,
+            lienzo: enLienzo ? `${video.videoWidth}x${video.videoHeight}` : "no",
             microfono: { estado: pistaAudio.readyState, mudoMs: Math.round(mudoMs), terminado: audioTerminado,
                          pico: pico === null ? null : Number(pico.toFixed(4)), medidor: audioCtx?.state || "sin" },
           };
+          enLienzo?.detener();
           if (stream === streamIntento) cerrarCamara();
 
           if (!chunks.length) {
@@ -1287,6 +1360,7 @@
 
       $("result").innerHTML = emptyState("Sube la identificación, graba la prueba de vida y presiona Verificar identidad.");
       dropzone("idFile");
+      camaraPara("idFileCam", "idFile");
       refreshSend();
     </script>
 
@@ -1396,6 +1470,8 @@
       $("pResult").innerHTML = emptyState("Sube la identificación y una foto de la persona, y presiona Comparar foto.");
       dropzone("pIdFile");
       dropzone("pPhotoFile");
+      camaraPara("pIdFileCam", "pIdFile");
+      camaraPara("pPhotoFileCam", "pPhotoFile");
     </script>
   </body>
 </html>
