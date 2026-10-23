@@ -15,6 +15,7 @@ import numpy as np
 
 from app.services.face_engine import MAX_GIRO_FRENTE, detect_faces, pick_best_face, pose
 from app.services.image_quality import sharpness
+from app.services.orientacion import girar, orientacion
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -71,6 +72,7 @@ def fotogramas_de_frente(path: str, cantidad: int = FOTOGRAMAS) -> list[dict]:
     los razonablemente nitidos; si en un tramo nunca miro de frente (estaba
     haciendo un gesto), el menos girado.
     """
+    angulo = orientacion(path)  # si se grabo "acostado", las fotos salen derechas
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         return []
@@ -84,6 +86,7 @@ def fotogramas_de_frente(path: str, cantidad: int = FOTOGRAMAS) -> list[dict]:
             ok, cuadro = cap.retrieve()
             if not ok:
                 continue
+            cuadro = girar(cuadro, angulo)
             caras = detect_faces(cv2.cvtColor(cuadro, cv2.COLOR_BGR2RGB))
             if len(caras) != 1:
                 continue

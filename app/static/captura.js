@@ -171,30 +171,56 @@ function inicio(c) {
 
 // ---------------------------------------------------------------- intento
 
+// La camara y el microfono se abren nuevos en cada intento y se cierran al terminar de
+// grabar: reutilizarlos fallaba en algunos telefonos (al reproducir la grabacion con
+// sonido, el sistema silenciaba o cortaba el microfono y el siguiente intento salia sin audio).
+function cerrarCamara() {
+  stream?.getTracks().forEach((t) => t.stop());
+  stream = null;
+}
+
+// "ok" o el motivo por el que no se pudo: permiso, ocupado, dispositivo, microfono, error.
 async function abrirCamara() {
-  if (stream) return true;
+  cerrarCamara();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
       audio: { echoCancellation: true, noiseSuppression: true },
     });
-    return true;
-  } catch {
-    resultado(false, "Necesitamos tu cámara y micrófono",
-      "Permite el acceso en tu navegador y vuelve a intentar.", "Reintentar", iniciarIntento);
-    return false;
+  } catch (e) {
+    stream = null;
+    if (e?.name === "NotAllowedError" || e?.name === "SecurityError") return "permiso";
+    if (e?.name === "NotReadableError" || e?.name === "AbortError") return "ocupado";
+    if (e?.name === "NotFoundError" || e?.name === "OverconstrainedError") return "dispositivo";
+    return "error";
   }
+  const audio = stream.getAudioTracks()[0];
+  if (!audio || audio.readyState !== "live") { cerrarCamara(); return "microfono"; }
+  return "ok";
 }
+
+const ERROR_CAMARA = {
+  permiso: "Permite el acceso a la cámara y al micrófono en tu navegador (en el ícono junto a la dirección de la página) y vuelve a intentar.",
+  ocupado: "Otra aplicación está usando la cámara o el micrófono. Ciérrala (llamadas, grabadora, videollamadas) y vuelve a intentar.",
+  dispositivo: "No encontramos cámara o micrófono en este dispositivo.",
+  microfono: "No se pudo activar el micrófono. Revisa que el navegador tenga permiso de micrófono y que ninguna otra app lo esté usando.",
+  error: "No pudimos activar la cámara y el micrófono. Vuelve a intentar.",
+};
 
 async function iniciarIntento() {
   $("btnComenzar").disabled = true;
   cargando("Preparando tu cámara", "Si tu navegador lo pide, permite el acceso a la cámara y al micrófono.");
   try {
-    if (!(await abrirCamara())) return;
+    const camara = await abrirCamara();
+    if (camara !== "ok") {
+      resultado(false, "Necesitamos tu cámara y micrófono", ERROR_CAMARA[camara], "Reintentar", iniciarIntento);
+      return;
+    }
     let reto;
     try {
       reto = await api("/reto", { method: "POST" });
     } catch (e) {
+      cerrarCamara();
       if (e.status === 409) { listo(); return ruta(await api(), true); }
       resultado(false, "No pudimos iniciar", e.message, "Reintentar", iniciarIntento);
       return;
@@ -232,6 +258,35 @@ async function camaraLista(video) {
     if (buenos >= 5) return true;
   }
   return false;
+}
+
+// Lienzo que copia la vista de la camara, ya derecha (el navegador aplica la rotacion
+// del sensor al mostrarla). Devuelve { pista, detener } o null si no se puede: entonces
+// se graba la camara directo y el servidor endereza el video si hace falta.
+function crearLienzo(video) {
+  const w0 = video.videoWidth, h0 = video.videoHeight;
+  if (!w0 || !h0 || !HTMLCanvasElement.prototype.captureStream) return null;
+  const escala = Math.min(1, 640 / Math.max(w0, h0));  // como maximo 640 px de lado
+  const lienzo = document.createElement("canvas");
+  lienzo.width = Math.round(w0 * escala);
+  lienzo.height = Math.round(h0 * escala);
+  const ctx = lienzo.getContext("2d", { alpha: false });
+  let pista;
+  try {
+    ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
+    pista = lienzo.captureStream(30).getVideoTracks();
+  } catch {
+    return null;
+  }
+  if (!pista.length) return null;
+  // Sin espejo: se dibujan los pixeles tal cual (el espejo de la vista es solo CSS).
+  const reloj = setInterval(() => {
+    if (video.readyState >= 2) ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
+  }, 1000 / 30);
+  return {
+    pista,
+    detener() { clearInterval(reloj); pista.forEach((t) => t.stop()); },
+  };
 }
 
 function pickMime() {
@@ -307,11 +362,34 @@ async function grabar(reto) {
   if (!hayImagen) $("pista").textContent = "Se ve muy oscuro. Busca más luz para que te veamos bien.";
   listo();
 
+  // Se graba lo que se ve, ya derecho: cada cuadro de la camara se dibuja en un lienzo
+  // y se graba el lienzo con el audio del microfono. Asi el video sale derecho en
+  // cualquier celular (algunos, sobre todo iPhone, grababan la imagen "acostada").
+  const enLienzo = crearLienzo(video);
+  const streamGrabacion = enLienzo ? new MediaStream([...enLienzo.pista, ...stream.getAudioTracks()]) : stream;
+
   const mime = pickMime();
   const chunks = [];
   // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida.
-  const recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
+  let recorder;
+  try {
+    recorder = new MediaRecorder(streamGrabacion, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
+  } catch {
+    // Algunos navegadores rechazan el formato o la tasa: se deja que elijan.
+    recorder = new MediaRecorder(streamGrabacion);
+  }
   recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  // Pedazos de 1 s solo en WebM (Chrome, Android); en Safari (MP4) una sola pieza.
+  const enPedazos = /webm/i.test(recorder.mimeType || mime);
+
+  // Vigilancia del microfono: si el sistema lo corta o lo silencia a media grabacion,
+  // el video saldria sin audio y el servidor lo rechazaria (gastando un intento).
+  const streamIntento = stream;
+  const pistaAudio = stream.getAudioTracks()[0];
+  let audioTerminado = false, mudoDesde = null, mudoMs = 0;
+  pistaAudio.onended = () => { if (inicioRec) audioTerminado = true; };
+  pistaAudio.onmute = () => { if (inicioRec && mudoDesde === null) mudoDesde = performance.now(); };
+  pistaAudio.onunmute = () => { if (mudoDesde !== null) { mudoMs += performance.now() - mudoDesde; mudoDesde = null; } };
 
   // fase: encuadre -> cuenta -> gesto -> frase -> fin
   let fase = "encuadre", paso = 0, desde = performance.now(), inicioRec = 0, ultimo = 0;
@@ -366,7 +444,9 @@ async function grabar(reto) {
   }
 
   function empezarGrabacion() {
-    recorder.start();
+    // En pedazos de 1 s (WebM): el video se va juntando mientras se graba y no
+    // depende de un solo envio al final (que algunos navegadores no hacen).
+    recorder.start(enPedazos ? 1000 : undefined);
     inicioRec = performance.now();
     $("rec").hidden = false;
     fase = "gesto";
@@ -431,17 +511,66 @@ async function grabar(reto) {
     $("pasoN").textContent = "Guardando…";
     items.forEach((li) => { li.className = "done"; li.querySelector(".estado").textContent = "Listo"; });
     const falta = MIN_DUR * 1000 - (performance.now() - inicioRec);
-    setTimeout(() => { if (recorder.state !== "inactive") recorder.stop(); }, Math.max(0, falta));
+    setTimeout(() => {
+      try {
+        if (recorder.state !== "inactive") {
+          recorder.requestData();  // lo que tenga pendiente, por si stop no lo entrega
+          recorder.stop();
+        }
+      } catch { /* ya se habia detenido */ }
+      // Si el navegador no avisa que termino (onstop), se arma con lo que ya se junto:
+      // asi no se queda en "Guardando…" para siempre.
+      vigia = setTimeout(() => {
+        try { if (recorder.state !== "inactive") recorder.requestData(); } catch { /* sin datos pendientes */ }
+        setTimeout(finalizar, 500);
+      }, 3000);
+    }, Math.max(0, falta));
   }
   $("btnListo").onclick = terminar;
 
-  recorder.onstop = () => {
+  // Una sola vez, venga de onstop, del vigia, de un error de la grabadora o de la camara.
+  let finalizado = false, vigia = null;
+  function finalizar(motivo = null) {
+    if (finalizado) return;
+    finalizado = true;
+    clearTimeout(vigia);
+    clearTimeout(fraseTimer);
+    fase = "fin";
     $("rec").hidden = true;
-    const blob = new Blob(chunks, { type: mime || "video/webm" });
+    // La camara y el microfono se apagan ya: asi la repeticion con sonido no
+    // interfiere con el siguiente intento.
+    if (mudoDesde !== null) mudoMs += performance.now() - mudoDesde;
+    const audioCortado = audioTerminado || mudoMs > 1500;
+    enLienzo?.detener();
+    if (stream === streamIntento) cerrarCamara();
+
+    if (!chunks.length || motivo) {
+      resultado(false, "No pudimos guardar la grabación",
+        motivo || "Vuelve a intentarlo; este intento no se cuenta.", "Intentar de nuevo", iniciarIntento);
+      return;
+    }
+    const tipo = recorder.mimeType || mime;
+    const blob = new Blob(chunks, { type: tipo || "video/webm" });
     if (repeticionUrl) URL.revokeObjectURL(repeticionUrl);
     repeticionUrl = URL.createObjectURL(blob);
-    subir(blob, mime, { fraseInicio, fraseFin });
-  };
+    if (audioCortado) {
+      // Sin voz el servidor lo rechazaria: no se envia y no se gasta el intento.
+      resultado(false, "No se grabó tu voz",
+        "El micrófono se desactivó durante la grabación. Cierra otras apps que lo usen y vuelve a intentar; este intento no se cuenta.",
+        "Intentar de nuevo", iniciarIntento, [], true);
+      return;
+    }
+    subir(blob, tipo, { fraseInicio, fraseFin });
+  }
+  recorder.onstop = () => finalizar();
+  recorder.onerror = () => finalizar("La grabación se interrumpió. Vuelve a intentarlo; este intento no se cuenta.");
+  // Si la camara se corta a media grabacion (otra app la toma, se bloquea el telefono...).
+  stream.getVideoTracks().forEach((t) => {
+    t.onended = () => {
+      if (fase === "fin" || !inicioRec) return;
+      finalizar("La cámara se desactivó durante la grabación. Vuelve a intentarlo; este intento no se cuenta.");
+    };
+  });
 
   function tick(now) {
     if (fase === "fin") return;
@@ -573,8 +702,7 @@ function errorEntrega() {
 }
 
 function terminado(c) {
-  stream?.getTracks().forEach((t) => t.stop());
-  stream = null;
+  cerrarCamara();
 
   if (EN_IFRAME) {
     // La pagina que incrusta la captura decide que sigue.

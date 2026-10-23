@@ -4,6 +4,7 @@ import numpy as np
 from app.services.antispoof import real_probability
 from app.services.face_engine import Face, de_frente, detect_faces, pick_best_face, pose
 from app.services.image_quality import sharpness
+from app.services.orientacion import girar, orientacion
 
 # Los candidatos se guardan reducidos para acotar memoria; SFace trabaja a 112 px.
 _MAX_STORED_SIDE = 256
@@ -47,6 +48,8 @@ def best_faces_by_segment(
     los primeros `segments - 1` reparten lo que hay antes de la frase (los gestos)
     y el ultimo es la frase. Cada tramo lleva "role": "gestos" o "frase".
     """
+    # Si el celular grabo la imagen acostada (sin etiqueta de rotacion), se endereza.
+    angulo = orientacion(video_path)
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return [None] * segments, {"max_faces_in_frame": 0, "multi_face_frames": 0, "first_multi_face_sec": None}
@@ -73,6 +76,7 @@ def best_faces_by_segment(
                 break
 
             time_sec = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+            frame_bgr = girar(frame_bgr, angulo)
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             faces = detect_faces(frame_rgb)
             max_faces = max(max_faces, len(faces))

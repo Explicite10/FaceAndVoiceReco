@@ -11,6 +11,7 @@ import numpy as np
 from mediapipe.tasks.python import BaseOptions, vision
 
 from app.services.model_store import ensure_model
+from app.services.orientacion import girar, orientacion
 
 FACE_LANDMARKER = (
     "face_landmarker.task",
@@ -69,6 +70,7 @@ def track_video(video_path: str, with_hands: bool) -> dict:
         if with_hands else None
     )
     series = {k: [] for k in ("times", "aperture", "blink", "turn", "nose_x", "chin_y", "hands")}
+    angulo = orientacion(video_path)  # endereza videos grabados "acostados"
     cap = cv2.VideoCapture(video_path)
     last_t, last_ms, n = -1e9, -1, 0
     try:
@@ -83,7 +85,7 @@ def track_video(video_path: str, with_hands: bool) -> dict:
             # El modo VIDEO exige marcas de tiempo estrictamente crecientes.
             last_ms = max(int(t * 1000), last_ms + 1)
 
-            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            rgb = cv2.cvtColor(girar(frame_bgr, angulo), cv2.COLOR_BGR2RGB)
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             face = face_lm.detect_for_video(image, last_ms)
 
