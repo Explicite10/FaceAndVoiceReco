@@ -372,15 +372,19 @@ POR_PAGINA = 10
 async def sesiones_pagina(pagina: int = 1, por_pagina: int = POR_PAGINA) -> dict:
     """Una pagina de la tabla del panel: las sesiones mas recientes primero.
 
+    Solo las que terminaron al menos una prueba (aprobadas o no aprobadas); las que
+    solo escanearon o iniciaron se cuentan en las graficas, no en la tabla.
+
     Una pagina fuera de rango se ajusta a la primera o la ultima (p. ej. si se
     borraron sesiones mientras alguien veia la ultima pagina).
     """
     if _pool is None:
-        todas = sorted(_mem_sesiones.values(), key=lambda s: (s["creada"], s["id"]), reverse=True)
+        todas = sorted((s for s in _mem_sesiones.values() if s["pruebas"] > 0),
+                       key=lambda s: (s["creada"], s["id"]), reverse=True)
         total = len(todas)
     else:
         async with _pool.acquire() as conn:
-            total = await conn.fetchval("SELECT count(*) FROM sesiones")
+            total = await conn.fetchval("SELECT count(*) FROM sesiones WHERE pruebas > 0")
     paginas = max(1, -(-total // por_pagina))
     pagina = min(max(1, pagina), paginas)
     desde = (pagina - 1) * por_pagina
@@ -390,7 +394,7 @@ async def sesiones_pagina(pagina: int = 1, por_pagina: int = POR_PAGINA) -> dict
         async with _pool.acquire() as conn:
             filas = await conn.fetch(
                 "SELECT id, creada, pruebas, retos, ultimo_tipo, ultimo_aprobado FROM sesiones "
-                "ORDER BY creada DESC, id DESC LIMIT $1 OFFSET $2", por_pagina, desde)
+                "WHERE pruebas > 0 ORDER BY creada DESC, id DESC LIMIT $1 OFFSET $2", por_pagina, desde)
     return {"total": total, "pagina": pagina, "paginas": paginas, "por_pagina": por_pagina,
             "filas": [_fila(s) for s in filas]}
 

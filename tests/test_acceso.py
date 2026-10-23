@@ -206,8 +206,9 @@ def test_embudo_motivos_y_actividad():
     assert r["resultado"] == {"aprobadas": 1, "no_aprobadas": 1, "abandonaron": 2}
     assert r["motivos"][0] == {"codigo": "blink_not_detected", "n": 2}
     assert sum(a["escaneos"] for a in r["actividad"]) == 4 and sum(a["pruebas"] for a in r["actividad"]) == 3
+    # La tabla solo muestra las que terminaron una prueba; el resto vive en las graficas.
     etapas = sorted(s["etapa"] for s in asyncio.run(db.sesiones_pagina(1))["filas"])
-    assert etapas == ["aprobada", "escaneo", "inicio", "no_aprobada"]
+    assert etapas == ["aprobada", "no_aprobada"]
     assert solo_escaneo  # (solo para nombrar la sesion que se quedo en el escaneo)
 
 
@@ -253,8 +254,10 @@ def test_tabla_paginada_de_10_en_10():
     ids = []
     for n in range(23):
         sid = asyncio.run(db.crear_sesion())
+        asyncio.run(db.registrar_prueba(sid, "video", n % 2 == 0))
         db._mem_sesiones[sid]["creada"] = db._ahora() + timedelta(seconds=n)  # la ultima es la mas reciente
         ids.append(sid)
+    asyncio.run(db.crear_sesion())  # solo escaneo: no sale en la tabla
 
     c = cliente()
     assert c.get("/panel/sesiones").status_code == 401  # solo el admin

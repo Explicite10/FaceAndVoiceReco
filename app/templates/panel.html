@@ -100,12 +100,12 @@
           </div>
 
           <div class="tabla-head">
-            <h3 class="table-title">Sesiones</h3>
+            <h3 class="table-title">Pruebas terminadas</h3>
             <span class="tabla-conteo" id="tablaConteo"></span>
           </div>
           <div class="table-wrap" id="tablaWrap">
             <table class="tabla-sesiones">
-              <thead><tr><th>Escaneo</th><th>Dónde se quedó</th><th>Pruebas</th><th>Tipo</th><th class="col-accion"><span class="sr-only">Acciones</span></th></tr></thead>
+              <thead><tr><th>Escaneo</th><th>Resultado</th><th>Pruebas</th><th>Tipo</th><th class="col-accion"><span class="sr-only">Acciones</span></th></tr></thead>
               <tbody id="recientes"></tbody>
             </table>
           </div>
@@ -305,10 +305,10 @@
       function pintarTabla(p) {
         pagina = p.pagina;
         const filas = p.filas.map((s) =>
-          `<tr><td data-label="Escaneo">${hora(s.creada)}</td><td data-label="Dónde se quedó">${ETAPA[s.etapa] || ""}</td>
+          `<tr><td data-label="Escaneo">${hora(s.creada)}</td><td data-label="Resultado">${ETAPA[s.etapa] || ""}</td>
            <td data-label="Pruebas">${s.pruebas}</td><td data-label="Tipo">${esc(TIPO[s.ultimo_tipo] || "—")}</td>
            <td class="col-accion"><button class="btn btn-sm" type="button" data-sesion="${esc(s.id)}">Ver registro</button></td></tr>`);
-        $("recientes").innerHTML = filas.join("") || '<tr><td class="empty-row" colspan="5">Aún nadie ha escaneado el código.</td></tr>';
+        $("recientes").innerHTML = filas.join("") || '<tr><td class="empty-row" colspan="5">Aún nadie ha terminado una prueba.</td></tr>';
         const desde = p.total ? (p.pagina - 1) * p.por_pagina + 1 : 0;
         const hasta = Math.min(p.pagina * p.por_pagina, p.total);
         $("tablaConteo").textContent = p.total > p.por_pagina ? `Mostrando ${desde}–${hasta} de ${p.total}`
