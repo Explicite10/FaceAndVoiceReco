@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Prueba de vida · Panel</title>
+    <meta name="theme-color" content="#072146" />
+    <link rel="icon" type="image/png" href="/static/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/panel.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container">
+        <a class="brand" href="/panel"><img src="/static/logo.png" alt="" /><span>Prueba de vida</span></a>
+        <div class="spacer"></div>
+        <form method="post" action="/logout" style="margin:0">
+          <button class="btn btn-ghost" type="submit">Cerrar sesión</button>
+        </form>
+      </div>
+    </header>
+
+    <section class="panel-hero">
+      <div class="container">
+        <p class="eyebrow">Panel administrativo</p>
+        <h1>Sesiones e intentos de todos los proyectos</h1>
+        <p>Lo que cada proyecto pidió a la prueba de vida, cómo terminó y por qué no pasaron los intentos rechazados.</p>
+      </div>
+    </section>
+
+    <main class="container">
+      {% if sin_base %}
+      <div class="card stats-card aviso">
+        <h2>Sin base de datos</h2>
+        <p class="sub-muted">El panel lee las sesiones de PostgreSQL. Configura <code>DATABASE_URL</code> y reinicia el servicio.</p>
+      </div>
+      {% else %}
+      <div class="grid">
+        <section class="card stats-card">
+          <form class="filtros" id="filtros" onsubmit="return false">
+            <div class="field">
+              <label for="fProyecto">Proyecto</label>
+              <select class="input" id="fProyecto">
+                <option value="">Todos los proyectos</option>
+                {% for p in proyectos %}
+                <option value="{{ p.id }}" {% if p.id == filtros.proyecto %}selected{% endif %}>{{ p.nombre }}{% if not p.activo %} (desactivado){% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="fDias">Periodo</label>
+              <select class="input" id="fDias">
+                {% for d in periodos %}
+                <option value="{{ d }}" {% if d == filtros.dias %}selected{% endif %}>{{ {1: "Últimas 24 horas", 7: "Últimos 7 días", 30: "Últimos 30 días", 90: "Últimos 90 días", 0: "Todo"}[d] }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </form>
+
+          <div class="stats-head">
+            <h2>Resultados</h2>
+            <small>Se actualiza cada 15 segundos.</small>
+          </div>
+          <div class="tiles">
+            <div class="tile"><small>Sesiones creadas</small><strong id="nSesiones">0</strong></div>
+            <div class="tile"><small>Intentos <span id="nDuracion"></span></small><strong id="nIntentos">0</strong></div>
+            <div class="tile ok"><small>Aprobadas</small><strong id="nAprobadas">0</strong></div>
+            <div class="tile bad"><small>No aprobadas</small><strong id="nRechazadas">0</strong></div>
+            <div class="tile"><small>Tasa de aprobación</small><strong id="nTasa">—</strong></div>
+            <div class="tile warn"><small>Entregas fallidas</small><strong id="nEntregas">0</strong></div>
+          </div>
+
+          <div class="charts">
+            <figure class="chart-card">
+              <figcaption><b>¿Hasta dónde llegaron?</b><span>Porcentaje de las sesiones creadas que llegó a cada paso.</span></figcaption>
+              <div id="gEmbudo" class="chart"></div>
+            </figure>
+            <figure class="chart-card">
+              <figcaption><b>Resultado de las sesiones</b><span>Cómo terminó cada sesión, o si sigue en curso.</span></figcaption>
+              <div id="gResultado" class="chart"></div>
+            </figure>
+            <figure class="chart-card">
+              <figcaption><b>¿Por qué no pasaron?</b><span>Validaciones que fallaron en los intentos no aprobados.</span></figcaption>
+              <div id="gMotivos" class="chart"></div>
+            </figure>
+            <figure class="chart-card" id="cardProyectos">
+              <figcaption><b>Por proyecto</b><span>Sesiones de cada proyecto según su resultado.</span></figcaption>
+              <div id="gProyectos" class="chart"></div>
+            </figure>
+            <figure class="chart-card ancho">
+              <figcaption><b>Actividad</b><span id="actividadSub">Sesiones, intentos y aprobadas por día.</span></figcaption>
+              <div id="gActividad" class="chart"></div>
+            </figure>
+          </div>
+
+          <div class="tabla-head">
+            <h3 class="table-title">Sesiones</h3>
+            <span class="tabla-conteo" id="tablaConteo"></span>
+          </div>
+          <div class="tabla-filtros">
+            <input class="input" id="fBuscar" type="search" maxlength="100" placeholder="Buscar por referencia o id de sesión"
+                   aria-label="Buscar por referencia o id de sesión" />
+            <select class="input" id="fResultado" aria-label="Filtrar por resultado">
+              <option value="">Todos los resultados</option>
+              <option value="aprobada">Aprobadas</option>
+              <option value="no_aprobada">No aprobadas</option>
+              <option value="en_curso">En curso</option>
+              <option value="expirada">Expiradas</option>
+              <option value="cancelada">Canceladas</option>
+              <option value="entrega_fallida">Entrega fallida</option>
+            </select>
+          </div>
+          <div class="table-wrap" id="tablaWrap">
+            <table class="tabla-sesiones">
+              <thead><tr><th>Fecha</th><th>Proyecto</th><th>Referencia</th><th>Resultado</th><th>Intentos</th><th>Entrega</th>
+                <th class="col-accion"><span class="sr-only">Acciones</span></th></tr></thead>
+              <tbody id="filas"></tbody>
+            </table>
+          </div>
+          <nav class="paginado" id="paginado" aria-label="Páginas de sesiones" hidden></nav>
+        </section>
+      </div>
+      {% endif %}
+    </main>
+
+    {% if not sin_base %}
+    <dialog class="modal" id="registro" aria-labelledby="regTitulo">
+      <div class="modal-card">
+        <header class="modal-head">
+          <div class="modal-titulos">
+            <p class="modal-eyebrow">Registro de la sesión</p>
+            <h2 id="regTitulo">Cargando…</h2>
+            <div id="regEtapa"></div>
+          </div>
+          <button class="icon-btn" id="regCerrar" type="button" aria-label="Cerrar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </header>
+        <div class="modal-body" id="regCuerpo"></div>
+      </div>
+    </dialog>
+
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@4.7.0/dist/apexcharts.min.js"
+            integrity="sha384-Hf0cGsweCbozkRP14s5KIue6STJYKaoipB/i1gTdbX+umKD59qA/Szk42FPMuKtB" crossorigin="anonymous"></script>
+    <script id="datosIniciales" type="application/json">{{ resumen | tojson }}</script>
+    <script id="sesionesIniciales" type="application/json">{{ sesiones | tojson }}</script>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      const hora = (iso) => iso ? new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+      const fechaLarga = (iso) => iso ? new Date(iso).toLocaleString("es-MX", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+      const C = { navy: "#072146", azul: "#1973b8", celeste: "#5bbeff", aqua: "#2dcccd", ok: "#48ae64", mal: "#da3851",
+                  naranja: "#e8913a", gris: "#b7c1cc", texto: "#5d6b79" };
+
+      const RESULTADO = {
+        aprobada: '<span class="pill ok">Aprobada</span>',
+        no_aprobada: '<span class="pill bad">No aprobada</span>',
+        en_curso: '<span class="pill mid">En curso</span>',
+        expirada: '<span class="pill none">Expirada</span>',
+        cancelada: '<span class="pill none">Cancelada</span>',
+      };
+      const ESTADO = {
+        pendiente: "Esperando al usuario", procesando: "Analizando el video", entregando: "Entregando al proyecto",
+        completada: "Completada", error_entrega: "Error al entregar", expirada: "Expirada", cancelada: "Cancelada",
+      };
+      // Validaciones del reporte (grupo.nombre), en palabras cortas.
+      const MOTIVO = {
+        "face.id_face_detected": "No se vio rostro en la INE",
+        "face.video_face_detected": "No se vio el rostro en el video",
+        "face.face_in_all_segments": "El rostro salió de cuadro",
+        "face.face_match": "El rostro no coincide con la INE",
+        "face.single_face": "Más de una persona",
+        "face.same_person": "Cambió la persona",
+        "voice.audio_present": "No hubo audio",
+        "voice.audio_duration": "Grabación muy corta o larga",
+        "voice.speech_detected": "No se escuchó la voz",
+        "voice.transcription_confidence": "Voz poco clara",
+        "voice.phrase_match": "La frase no coincide",
+        "liveness.anti_spoofing": "Parece foto o pantalla",
+        "liveness.face_tracking": "El rostro no se vio bien",
+        "liveness.lip_movement": "No movió los labios",
+        "liveness.lip_sync": "Labios no van con la voz",
+        "challenge.head_turn": "No giró la cabeza",
+        "challenge.blink": "No parpadeó",
+        "challenge.hand_raise": "No alzó la mano",
+        "challenge.gesture_order": "Movimientos en otro orden",
+        "internal.analysis_error": "Error al analizar el video",
+      };
+      const motivo = (c) => MOTIVO[c] || c;
+
+      // ---------------------------------------------------------------- filtros
+      const filtros = () => {
+        const p = new URLSearchParams({ dias: $("fDias").value });
+        if ($("fProyecto").value) p.set("proyecto", $("fProyecto").value);
+        return p;
+      };
+      function filtrosTabla(pagina) {
+        const p = filtros();
+        p.set("pagina", pagina);
+        if ($("fResultado").value) p.set("resultado", $("fResultado").value);
+        const q = $("fBuscar").value.trim();
+        if (q) p.set("buscar", q);
+        return p;
+      }
+
+      // ---------------------------------------------------------------- graficas
+      const base = {
+        chart: { fontFamily: "Libre Franklin, system-ui, sans-serif", foreColor: C.texto, toolbar: { show: false },
+                 animations: { enabled: true, speed: 450 }, parentHeightOffset: 0, zoom: { enabled: false } },
+        dataLabels: { enabled: false },
+        grid: { borderColor: "#e8edf2", strokeDashArray: 4 },
+        tooltip: { theme: "light" },
+        noData: { text: "Aún sin datos", style: { color: C.texto, fontSize: "14px" } },
+        legend: { position: "bottom", fontSize: "13px" },
+      };
+      function crear(id, opciones) {
+        if (!window.ApexCharts) return null;  // sin el CDN el panel sigue funcionando, solo sin graficas
+        const g = new ApexCharts($(id), { ...base, ...opciones, chart: { ...base.chart, ...opciones.chart } });
+        g.render();
+        return g;
+      }
+
+      const PASOS = ["Sesiones creadas", "Hicieron un intento", "Con resultado", "Aprobadas"];
+      let conteosEmbudo = [0, 0, 0, 0];
+
+      const graf = {
+        embudo: crear("gEmbudo", {
+          chart: { type: "radialBar", height: 320 },
+          labels: PASOS,
+          colors: [C.navy, C.azul, C.celeste, C.ok],
+          plotOptions: { radialBar: {
+            hollow: { size: "32%" },
+            track: { background: "#eef2f6", margin: 5 },
+            dataLabels: {
+              name: { fontSize: "12px", color: C.texto, offsetY: -6 },
+              value: { fontSize: "20px", fontWeight: 700, color: C.navy, offsetY: 4, formatter: (v) => `${Math.round(v)}%` },
+              total: { show: true, label: "Sesiones", fontSize: "12px", color: C.texto, formatter: () => conteosEmbudo[0] ?? 0 },
+            },
+          } },
+          stroke: { lineCap: "round" },
+          legend: { show: true, position: "bottom", fontSize: "13px",
+                    formatter: (nombre, o) => `${nombre}: <b>${conteosEmbudo[o.seriesIndex] ?? 0}</b>` +
+                      (conteosEmbudo[0] ? ` (${Math.round((conteosEmbudo[o.seriesIndex] / conteosEmbudo[0]) * 100)}%)` : "") },
+          series: [],
+        }),
+        resultado: crear("gResultado", {
+          chart: { type: "donut", height: 300 },
+          labels: ["Aprobadas", "No aprobadas", "En curso", "Expiradas", "Canceladas"],
+          colors: [C.ok, C.mal, C.naranja, C.gris, "#8a97a6"],
+          plotOptions: { pie: { donut: { size: "64%", labels: { show: true,
+            total: { show: true, label: "Sesiones", color: C.texto, formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0) } } } } },
+          stroke: { width: 2, colors: ["#fff"] },
+          series: [],
+        }),
+        motivos: crear("gMotivos", {
+          chart: { type: "bar", height: 300 },
+          plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: "62%" } },
+          colors: [C.mal],
+          dataLabels: { enabled: true, style: { fontSize: "12px" } },
+          xaxis: { categories: [], labels: { formatter: (v) => Math.round(v) } },
+          yaxis: { labels: { maxWidth: 190 } },
+          series: [{ name: "Intentos", data: [] }],
+        }),
+        proyectos: crear("gProyectos", {
+          chart: { type: "bar", height: 300, stacked: true },
+          plotOptions: { bar: { horizontal: true, borderRadius: 3, barHeight: "60%" } },
+          colors: [C.ok, C.mal, C.gris],
+          xaxis: { categories: [], labels: { formatter: (v) => Math.round(v) } },
+          yaxis: { labels: { maxWidth: 170 } },
+          series: [],
+        }),
+        actividad: crear("gActividad", {
+          chart: { type: "area", height: 300 },
+          colors: [C.azul, C.aqua, C.ok],
+          stroke: { curve: "monotoneCubic", width: 2 },
+          markers: { size: 0, hover: { size: 5 } },
+          fill: { type: "gradient", gradient: { opacityFrom: 0.3, opacityTo: 0.04 } },
+          xaxis: { type: "datetime", labels: { datetimeUTC: false } },
+          yaxis: { min: 0, forceNiceScale: true, labels: { formatter: (v) => Math.round(v) } },
+          series: [],
+        }),
+      };
+
+      function pintar(r) {
+        $("nSesiones").textContent = r.sesiones;
+        $("nIntentos").textContent = r.intentos;
+        $("nDuracion").textContent = r.duracion_ms ? `· ${(r.duracion_ms / 1000).toFixed(1)} s de análisis` : "";
+        $("nAprobadas").textContent = r.resultado.aprobadas;
+        $("nRechazadas").textContent = r.resultado.no_aprobadas;
+        const decididas = r.resultado.aprobadas + r.resultado.no_aprobadas;
+        $("nTasa").textContent = decididas ? `${Math.round((r.resultado.aprobadas / decididas) * 100)}%` : "—";
+        $("nEntregas").textContent = r.entregas_fallidas;
+
+        const e = r.embudo;
+        conteosEmbudo = [e.sesiones, e.con_intento, e.con_resultado, e.aprobadas];
+        graf.embudo?.updateSeries(e.sesiones ? conteosEmbudo.map((n) => Math.round((n / e.sesiones) * 1000) / 10) : []);
+
+        const res = r.resultado;
+        const serieRes = [res.aprobadas, res.no_aprobadas, res.en_curso, res.expiradas, res.canceladas];
+        graf.resultado?.updateSeries(serieRes.some(Boolean) ? serieRes : []);
+
+        // Conteos enteros: con pocos datos ApexCharts pondria marcas como 0.2, 0.4...
+        const maxMotivo = Math.max(0, ...r.motivos.map((m) => m.n));
+        graf.motivos?.updateOptions({
+          xaxis: { categories: r.motivos.map((m) => motivo(m.codigo)),
+                   tickAmount: Math.max(1, Math.min(maxMotivo, 5)), max: Math.max(maxMotivo, 1) },
+          series: [{ name: "Intentos", data: r.motivos.map((m) => m.n) }],
+        });
+
+        // Con un proyecto elegido la grafica por proyecto no dice nada nuevo.
+        $("cardProyectos").hidden = Boolean($("fProyecto").value);
+        graf.proyectos?.updateOptions({
+          xaxis: { categories: r.por_proyecto.map((p) => p.nombre) },
+          series: r.por_proyecto.length ? [
+            { name: "Aprobadas", data: r.por_proyecto.map((p) => p.aprobadas) },
+            { name: "No aprobadas", data: r.por_proyecto.map((p) => p.no_aprobadas) },
+            { name: "Sin resultado", data: r.por_proyecto.map((p) => p.sin_resultado) },
+          ] : [],
+        });
+
+        const porHora = r.actividad.unidad === "hora";
+        $("actividadSub").textContent = `Sesiones, intentos y aprobadas por ${porHora ? "hora" : "día"}.`;
+        const pts = r.actividad.puntos;
+        const maxAct = Math.max(1, ...pts.map((p) => Math.max(p.sesiones, p.intentos)));
+        graf.actividad?.updateOptions({
+          xaxis: { type: "datetime", labels: { datetimeUTC: false, format: porHora ? "HH:mm" : "dd MMM" } },
+          tooltip: { x: { format: porHora ? "dd MMM HH:mm" : "dd MMM yyyy" } },
+          yaxis: { min: 0, max: maxAct < 5 ? maxAct : undefined, tickAmount: Math.min(maxAct, 5), labels: { formatter: (v) => Math.round(v) } },
+        });
+        graf.actividad?.updateSeries(pts.some((p) => p.sesiones || p.intentos) ? [
+          { name: "Sesiones", data: pts.map((p) => [p.t, p.sesiones]) },
+          { name: "Intentos", data: pts.map((p) => [p.t, p.intentos]) },
+          { name: "Aprobadas", data: pts.map((p) => [p.t, p.aprobadas]) },
+        ] : []);
+      }
+      pintar(JSON.parse($("datosIniciales").textContent));
+
+      // ---------------------------------------------------------------- tabla paginada
+      let pagina = 1;
+      let pidiendoPagina = 0;
+
+      function pintarTabla(p) {
+        pagina = p.pagina;
+        const filas = p.filas.map((s) => {
+          const entrega = s.entrega_fallida ? '<span class="pill warn">Falló</span>'
+            : s.estado === "completada" ? '<span class="pill ok">Entregada</span>' : '<span class="sub-muted">—</span>';
+          return `<tr><td data-label="Fecha">${hora(s.creada)}</td><td data-label="Proyecto">${esc(s.proyecto)}</td>
+            <td data-label="Referencia" class="mono">${esc(s.referencia_externa || "—")}</td>
+            <td data-label="Resultado">${RESULTADO[s.resultado] || ""}</td>
+            <td data-label="Intentos">${s.intentos} de ${s.max_intentos}</td><td data-label="Entrega">${entrega}</td>
+            <td class="col-accion"><button class="btn btn-sm" type="button" data-sesion="${esc(s.id)}">Ver registro</button></td></tr>`;
+        });
+        $("filas").innerHTML = filas.join("") || '<tr><td class="empty-row" colspan="7">No hay sesiones con estos filtros.</td></tr>';
+        const desde = p.total ? (p.pagina - 1) * p.por_pagina + 1 : 0;
+        const hasta = Math.min(p.pagina * p.por_pagina, p.total);
+        $("tablaConteo").textContent = p.total > p.por_pagina ? `Mostrando ${desde}–${hasta} de ${p.total}`
+          : p.total ? `${p.total} ${p.total === 1 ? "sesión" : "sesiones"}` : "";
+        pintarPaginado(p);
+      }
+
+      // Primera, ultima y las vecinas de la actual, con "…" en los huecos.
+      function numerosDePagina(actual, total) {
+        const set = new Set([1, total, actual - 1, actual, actual + 1].filter((n) => n >= 1 && n <= total));
+        const nums = [...set].sort((a, b) => a - b), out = [];
+        nums.forEach((n, i) => { if (i && n - nums[i - 1] > 1) out.push("…"); out.push(n); });
+        return out;
+      }
+
+      function pintarPaginado(p) {
+        const nav = $("paginado");
+        nav.hidden = p.paginas <= 1;
+        if (nav.hidden) { nav.innerHTML = ""; return; }
+        const flecha = (d) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+        const numeros = numerosDePagina(p.pagina, p.paginas).map((n) => n === "…"
+          ? '<span class="pag-hueco" aria-hidden="true">…</span>'
+          : `<button type="button" class="pag-num" data-pagina="${n}" ${n === p.pagina ? 'aria-current="page"' : ""}
+               aria-label="Página ${n}">${n}</button>`).join("");
+        nav.innerHTML = `
+          <button type="button" class="pag-btn" data-pagina="${p.pagina - 1}" ${p.pagina === 1 ? "disabled" : ""} aria-label="Página anterior">
+            ${flecha("M15 18l-6-6 6-6")}<span>Anterior</span></button>
+          <div class="pag-numeros">${numeros}</div>
+          <span class="pag-actual" aria-live="polite">Página ${p.pagina} de ${p.paginas}</span>
+          <button type="button" class="pag-btn" data-pagina="${p.pagina + 1}" ${p.pagina === p.paginas ? "disabled" : ""} aria-label="Página siguiente">
+            <span>Siguiente</span>${flecha("M9 18l6-6-6-6")}</button>`;
+      }
+
+      async function irAPagina(n, { desplazar = false, silencioso = false } = {}) {
+        const yo = ++pidiendoPagina;
+        if (!silencioso) $("tablaWrap").classList.add("cargando");
+        try {
+          const res = await fetch(`/panel/sesiones?${filtrosTabla(n)}`, { cache: "no-store" });
+          if (res.status === 401) { location.href = "/login"; return; }
+          if (!res.ok || yo !== pidiendoPagina) return;  // llego tarde: ya se pidio otra pagina
+          pintarTabla(await res.json());
+          if (desplazar) document.querySelector(".tabla-head").scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch { /* sin red: se queda la pagina actual */ }
+        finally { if (yo === pidiendoPagina) $("tablaWrap").classList.remove("cargando"); }
+      }
+
+      $("paginado").addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-pagina]");
+        if (b && !b.disabled) irAPagina(Number(b.dataset.pagina), { desplazar: true });
+      });
+      pintarTabla(JSON.parse($("sesionesIniciales").textContent));
+
+      // ---------------------------------------------------------------- refresco y filtros
+      let pidiendoDatos = 0;
+      async function actualizar({ silencioso = true } = {}) {
+        const yo = ++pidiendoDatos;
+        try {
+          const res = await fetch(`/panel/datos?${filtros()}`, { cache: "no-store" });
+          if (res.status === 401) { location.href = "/login"; return; }
+          if (res.ok && yo === pidiendoDatos) pintar(await res.json());
+        } catch { /* sin red: se reintenta en el siguiente ciclo */ }
+        irAPagina(silencioso ? pagina : 1, { silencioso });
+      }
+      setInterval(() => { if (!document.hidden) actualizar(); }, 15000);
+
+      function cambiarFiltros() {
+        // La URL guarda los filtros: recargar o compartir el enlace abre la misma vista.
+        history.replaceState(null, "", `/panel?${filtros()}`);
+        actualizar({ silencioso: false });
+      }
+      $("fProyecto").addEventListener("change", cambiarFiltros);
+      $("fDias").addEventListener("change", cambiarFiltros);
+      $("fResultado").addEventListener("change", () => irAPagina(1));
+      let espera;
+      $("fBuscar").addEventListener("input", () => { clearTimeout(espera); espera = setTimeout(() => irAPagina(1), 350); });
+
+      // ---------------------------------------------------------------- modal "Ver registro"
+      const modal = $("registro");
+      let pedido = 0;
+      $("filas").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-sesion]");
+        if (btn) abrirRegistro(btn.dataset.sesion);
+      });
+      $("regCerrar").onclick = () => modal.close();
+      modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });
+
+      const dato = (etiqueta, valor) => `<div><dt>${etiqueta}</dt><dd>${valor}</dd></div>`;
+      const kv = (pares) => `<dl class="kv">${pares.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>`;
+
+      async function abrirRegistro(sid) {
+        const yo = ++pedido;
+        $("regTitulo").textContent = "Cargando…";
+        $("regEtapa").innerHTML = "";
+        $("regCuerpo").innerHTML = '<div class="modal-cargando"><span class="spinner-sm" aria-hidden="true"></span>Cargando el registro…</div>';
+        if (!modal.open) modal.showModal();
+        let datos;
+        try {
+          const res = await fetch(`/panel/sesion/${encodeURIComponent(sid)}`, { cache: "no-store" });
+          if (res.status === 401) { location.href = "/login"; return; }
+          if (!res.ok) throw new Error(String(res.status));
+          datos = await res.json();
+        } catch {
+          if (yo !== pedido) return;
+          $("regTitulo").textContent = "No se pudo cargar";
+          $("regCuerpo").innerHTML = '<p class="modal-nota">No pudimos cargar este registro. Cierra y vuelve a intentarlo.</p>';
+          return;
+        }
+        if (yo !== pedido) return;  // se abrio otro registro mientras cargaba
+        pintarRegistro(datos);
+      }
+
+      function pintarRegistro({ sesion: s, intentos }) {
+        $("regTitulo").textContent = `${s.proyecto} · ${s.referencia_externa || "sin referencia"}`;
+        $("regEtapa").innerHTML = RESULTADO[s.resultado] || "";
+
+        let html = `<dl class="reg-facts">
+          ${dato("Creada", hora(s.creada))}
+          ${dato(s.finalizada ? "Finalizada" : "Vence", hora(s.finalizada || s.expira))}
+          ${dato("Intentos", `${s.intentos} de ${s.max_intentos}`)}
+          ${dato("Estado", esc(ESTADO[s.estado] || s.estado))}
+        </dl>`;
+
+        html += '<section class="reg-seccion"><h3>Intentos</h3>';
+        if (!intentos.length) {
+          html += `<div class="modal-vacio"><b>Sin intentos</b><span>La persona no llegó a enviar una grabación.</span></div>`;
+        }
+        for (const i of intentos) {
+          const fallos = i.checks_fallidos.map((c) => `<li>${esc(motivo(c))}<small class="mono">${esc(c)}</small></li>`).join("");
+          html += `<div class="intento">
+            <div class="intento-head"><b>Intento ${i.numero}</b>
+              <span>${i.aprobado ? '<span class="pill ok">Aprobado</span>' : '<span class="pill bad">No aprobado</span>'}</span></div>
+            <div class="sub-muted">${fechaLarga(i.creado)}${i.duracion_ms != null ? ` · análisis de ${(i.duracion_ms / 1000).toFixed(1)} s` : ""}</div>
+            ${fallos ? `<ul>${fallos}</ul>` : ""}
+          </div>`;
+        }
+        html += "</section>";
+
+        const en = s.entrega;
+        html += '<section class="reg-seccion"><h3>Entrega al proyecto</h3>';
+        html += en ? kv([
+          ["Resultado", en.ok ? '<span class="pill ok">Recibida</span>' : '<span class="pill warn">Falló</span>'],
+          ["Respuesta HTTP", esc(en.codigo ?? "—")],
+          ["Envíos", esc(en.intentos ?? "—")],
+          ...(en.error ? [["Error", esc(en.error)]] : []),
+          ...(en.id ? [["Id de entrega", `<span class="mono">${esc(en.id)}</span>`]] : []),
+          ["Webhook", `<span class="mono">${esc(s.webhook_url)}</span>`],
+        ]) : `<p class="sub-muted" style="margin:0">Aún no se envía: la sesión sigue en curso.</p>`;
+        html += "</section>";
+
+        html += '<section class="reg-seccion"><h3>Datos de la sesión</h3>' + kv([
+          ["Id de sesión", `<span class="mono">${esc(s.id)}</span>`],
+          ["Proyecto", `${esc(s.proyecto)} <span class="mono sub-muted">${esc(s.proyecto_id)}</span>`],
+          ["Referencia", `<span class="mono">${esc(s.referencia_externa || "—")}</span>`],
+          ["Regresa a", s.url_retorno ? `<span class="mono">${esc(s.url_retorno)}</span>` : "—"],
+          ["Creada", fechaLarga(s.creada)],
+          ["Vence", fechaLarga(s.expira)],
+        ]) + "</section>";
+
+        if (s.metadata && Object.keys(s.metadata).length) {
+          html += `<section class="reg-seccion"><h3>Metadata del proyecto</h3><pre class="json">${esc(JSON.stringify(s.metadata, null, 2))}</pre></section>`;
+        }
+        $("regCuerpo").innerHTML = html;
+      }
+    </script>
+    {% endif %}
+  </body>
+</html>

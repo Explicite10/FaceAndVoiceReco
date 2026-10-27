@@ -13,3 +13,5 @@ mediapipe==0.10.35
 asyncpg==0.30.0
 httpx==0.28.1
 rapidfuzz==3.14.6
+# Zonas horarias del panel aunque la imagen no traiga tzdata del sistema.
+tzdata==2025.2

@@ -133,6 +133,25 @@ docker compose exec api python -m app.cli dominios prj_... creditos.com,otrodomi
 
 Si un proyecto ya consumía la API directa (`/api/challenge`, `/api/verify-identity`, `/api/verify-photo`) sin llave, después de este cambio recibirá `401`: debe mandar su `api_key` en el header `X-API-Key`.
 
+### Panel administrativo
+
+En `https://<dominio>/panel` (y `/` lleva ahí) hay un tablero con las sesiones e intentos de todos los proyectos: totales, gráficas, una tabla con filtros y el detalle de cada sesión. Solo lee el resumen que ya está en la base; no muestra video, INE ni datos de la cara.
+
+Tiene una sola cuenta. Para activarla, en `.env`:
+
+```bash
+# Hash de la contraseña (la pide dos veces; no se guarda en claro):
+docker compose exec api python -m app.core.acceso hash
+```
+
+```ini
+ADMIN_EMAIL=correo@empresa.com
+ADMIN_PASSWORD_HASH=scrypt$...      # lo que imprimió el comando anterior
+SECRET_KEY=...                      # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Luego `docker compose up -d`. Sin `SECRET_KEY` el panel funciona, pero hay que volver a entrar tras cada reinicio. El login se bloquea unos minutos tras 5 intentos fallidos desde la misma IP (30 en total).
+
 ## 7. Comprobar que todo está bien
 
 Desde cualquier equipo con `curl` (no hace falta estar en el servidor):

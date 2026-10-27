@@ -158,6 +158,22 @@ class Settings(BaseModel):
     rate_limit_requests: int = int(os.getenv("RATE_LIMIT_REQUESTS", "10"))  # 0 = sin limite
     rate_limit_window_sec: int = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60"))
 
+    # ---------- Panel administrativo (/panel) ----------
+    # Firma de la cookie del panel. Sin SECRET_KEY se genera una al arrancar y
+    # hay que volver a entrar con cada reinicio.
+    secret_key: str = os.getenv("SECRET_KEY", "")
+    # Unica cuenta del panel. La contraseña solo se guarda como hash
+    # (python -m app.core.acceso hash).
+    admin_email: str = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+    admin_password_hash: str = os.getenv("ADMIN_PASSWORD_HASH", "")
+    admin_session_hours: int = int(os.getenv("ADMIN_SESSION_HOURS", "8"))
+    # Zona horaria de las graficas de actividad (agrupar por dia u hora).
+    panel_timezone: str = os.getenv("PANEL_TIMEZONE", "America/Mexico_City")
+    # Intentos de login por IP en la ventana, y en total (frena fuerza bruta repartida).
+    login_attempts_per_ip: int = 5
+    login_attempts_global: int = 30
+    login_window_sec: int = 300
+
     # Subidas. Ojo: FastAPI recibe el request completo antes de estas
     # validaciones; si hay un proxy al frente, conviene que limite el body.
     max_video_mb: int = int(os.getenv("MAX_VIDEO_MB", "50"))   # 20 s a 1080p pesan ~45 MB
