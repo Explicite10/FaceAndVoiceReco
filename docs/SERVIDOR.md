@@ -146,7 +146,7 @@ docker compose exec api python -m app.core.acceso hash
 
 ```ini
 ADMIN_EMAIL=correo@empresa.com
-ADMIN_PASSWORD_HASH=scrypt$...      # lo que imprimió el comando anterior
+ADMIN_PASSWORD_HASH='scrypt$...'    # lo que imprimió el comando anterior, entre comillas simples
 SECRET_KEY=...                      # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
