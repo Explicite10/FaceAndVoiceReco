@@ -483,11 +483,19 @@
         }
         for (const i of intentos) {
           const fallos = i.checks_fallidos.map((c) => `<li>${esc(motivo(c))}<small class="mono">${esc(c)}</small></li>`).join("");
+          // Intentos anteriores a este cambio no traen respuesta guardada.
+          const r = i.respuesta;
+          const vio = r?.motivos?.length
+            ? `<p class="sub-muted" style="margin:8px 0 2px">Lo que vio la persona:</p><ul>${r.motivos.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : "";
+          const resumen = r?.reporte?.result?.summary ? `<p style="margin:8px 0 0">${esc(r.reporte.result.summary)}</p>` : "";
+          const json = r ? `<details style="margin-top:8px"><summary>Respuesta completa (JSON)</summary>
+              <pre class="json">${esc(JSON.stringify(r.reporte ?? r, null, 2))}</pre></details>` : "";
           html += `<div class="intento">
             <div class="intento-head"><b>Intento ${i.numero}</b>
               <span>${i.aprobado ? '<span class="pill ok">Aprobado</span>' : '<span class="pill bad">No aprobado</span>'}</span></div>
             <div class="sub-muted">${fechaLarga(i.creado)}${i.duracion_ms != null ? ` · análisis de ${(i.duracion_ms / 1000).toFixed(1)} s` : ""}</div>
             ${fallos ? `<ul>${fallos}</ul>` : ""}
+            ${resumen}${vio}${json}
           </div>`;
         }
         html += "</section>";

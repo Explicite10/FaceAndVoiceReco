@@ -170,11 +170,15 @@ async def _persistir(s: Sesion) -> None:
         logger.exception("No se pudo guardar la sesion %s", s.id)
 
 
-async def _registrar_intento(s: Sesion, aprobado: bool, checks: list[str], duracion_ms: int | None) -> None:
+async def _registrar_intento(s: Sesion, aprobado: bool, checks: list[str], duracion_ms: int | None,
+                             respuesta: dict) -> None:
+    logger.info("Intento %s de la sesion %s (%s): %s%s", s.intentos, s.id, s.proyecto_id,
+                "aprobado" if aprobado else "no aprobado", f" {', '.join(checks)}" if checks else "")
     try:
         await db.pool().execute(
-            "INSERT INTO intentos (sesion_id, numero, aprobado, checks_fallidos, duracion_ms) VALUES ($1, $2, $3, $4, $5)",
-            s.id, s.intentos, aprobado, checks, duracion_ms,
+            "INSERT INTO intentos (sesion_id, numero, aprobado, checks_fallidos, duracion_ms, respuesta)"
+            " VALUES ($1, $2, $3, $4, $5, $6)",
+            s.id, s.intentos, aprobado, checks, duracion_ms, respuesta,
         )
     except Exception:
         logger.exception("No se pudo guardar el intento %s de la sesion %s", s.intentos, s.id)
@@ -354,9 +358,10 @@ async def _procesar(s: Sesion, video_path: str, reto: dict, ventana: tuple[float
             return
         aprobado = bool(informe and informe["result"]["approved"])
         s.checks_fallidos = informe["result"]["failed_checks"] if informe else ["internal.analysis_error"]
-        await _registrar_intento(s, aprobado, s.checks_fallidos, informe["processing_time_ms"] if informe else None)
         # Tambien si se agotan los intentos: la pantalla final dice por que no paso.
         s.motivos = user_reasons(informe)
+        await _registrar_intento(s, aprobado, s.checks_fallidos, informe["processing_time_ms"] if informe else None,
+                                 {"motivos": s.motivos, "reporte": informe})
         if aprobado or s.intentos >= s.max_intentos:
             s.informe = informe
             if datos_evidencia is not None:

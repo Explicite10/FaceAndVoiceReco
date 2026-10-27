@@ -215,7 +215,7 @@ async def detalle_sesion(sesion_id: str) -> dict | None:
     if s is None:
         return None
     intentos = await pool.fetch(
-        "SELECT numero, aprobado, checks_fallidos, duracion_ms, creado FROM intentos"
+        "SELECT numero, aprobado, checks_fallidos, duracion_ms, creado, respuesta FROM intentos"
         " WHERE sesion_id = $1 ORDER BY numero DESC",
         sesion_id,
     )

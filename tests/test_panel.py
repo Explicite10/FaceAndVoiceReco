@@ -138,8 +138,9 @@ async def _llenar(pool):
         ("ses_2", 3, False, ["face.face_match"]), ("ses_3", 1, True, []),
     ):
         await pool.execute(
-            "INSERT INTO intentos (sesion_id, numero, aprobado, checks_fallidos, duracion_ms) VALUES ($1, $2, $3, $4, 1000)",
-            sid, n, ok, checks)
+            "INSERT INTO intentos (sesion_id, numero, aprobado, checks_fallidos, duracion_ms, respuesta)"
+            " VALUES ($1, $2, $3, $4, 1000, $5)",
+            sid, n, ok, checks, {"motivos": [], "reporte": {"result": {"approved": ok, "failed_checks": checks}}})
 
 
 async def _entrar(c):
@@ -191,6 +192,7 @@ async def test_tabla_y_detalle(base):
         d = (await c.get("/panel/sesion/ses_2")).json()
         assert d["sesion"]["proyecto"] == "Alfa" and d["sesion"]["resultado"] == "no_aprobada"
         assert [i["numero"] for i in d["intentos"]] == [3, 2, 1]
+        assert d["intentos"][0]["respuesta"]["reporte"]["result"]["failed_checks"] == ["face.face_match"]
         assert (await c.get("/panel/sesion/ses_no_existe")).status_code == 404
 
         html = (await c.get("/panel")).text

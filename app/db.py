@@ -1,7 +1,8 @@
 """PostgreSQL: proyectos autorizados y un resumen de cada sesion.
 
 Aqui nunca entran el video, la INE, la cara ni la voz: solo quien pidio la
-sesion, cuando, como termino y si se le entrego el resultado al proyecto.
+sesion, cuando, como termino, el reporte de cada intento y si se le entrego
+el resultado al proyecto.
 Las tablas se crean al arrancar si no existen.
 """
 import json
@@ -56,6 +57,9 @@ CREATE TABLE IF NOT EXISTS intentos (
     creado             timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (sesion_id, numero)
 );
+-- Lo que se le respondio en cada intento: motivos que vio el usuario y el
+-- reporte JSON (decision, checks, porcentajes). Sin video, fotos ni vectores.
+ALTER TABLE intentos ADD COLUMN IF NOT EXISTS respuesta jsonb;
 """
 
 

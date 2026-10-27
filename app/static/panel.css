@@ -257,6 +257,8 @@ td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 .intento-head b { color: var(--navy); }
 .intento ul { margin: 10px 0 0; padding-left: 18px; color: var(--text); font-size: 14px; }
 .intento ul li small { color: var(--faint); margin-left: 6px; }
+.intento summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--navy); margin-bottom: 6px; }
+.intento pre.json { max-height: 360px; }
 .kv { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: 14px; }
 .kv dt { color: var(--muted); font-weight: 600; }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
