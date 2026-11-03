@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Laboratorio · Prueba de vida</title>
+    <link rel="icon" type="image/png" href="/static/logo.png" />
+    <link rel="stylesheet" href="/static/panel.css" />
+    <style>
+      .lab-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+      @media (max-width: 860px) { .lab-grid { grid-template-columns: 1fr; } }
+      .lab-card { padding: 20px; margin-bottom: 18px; }
+      .lab-card h2 { margin: 0 0 12px; font-size: 18px; color: var(--navy); }
+      textarea.input { min-height: 84px; resize: vertical; font: inherit; }
+      .fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .lab-tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
+      .lab-tabla th, .lab-tabla td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+      .lab-tabla th { color: var(--muted); font-weight: 600; font-size: 13px; }
+      .nota { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container">
+        <a class="brand" href="/lab"><img src="/static/logo.png" alt="" /><span>Prueba de vida · Laboratorio</span></a>
+      </div>
+    </header>
+    <section class="panel-hero">
+      <div class="container">
+        <p class="eyebrow">Solo en esta computadora</p>
+        <h1>Probar la captura con una INE</h1>
+        <p>La misma prueba que reciben ArtBroker y Nify: gestos, frase y comparación con la INE, con los mismos umbrales.
+           La persona escanea un QR y la hace en su teléfono; aquí ves el reporte de cada intento y qué tan buena es la foto de la INE.</p>
+      </div>
+    </section>
+    <main class="container">
+      <div class="lab-grid">
+        <div>
+          <form class="card lab-card" method="post" action="/lab" enctype="multipart/form-data">
+            <h2>Nueva prueba</h2>
+            {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+            <div class="field">
+              <label for="etiqueta">Nombre o referencia de la prueba</label>
+              <input class="input" id="etiqueta" name="etiqueta" maxlength="80" value="{{ etiqueta }}"
+                     placeholder="ej. Juan P. - INE que mandó ArtBroker" />
+            </div>
+            <div class="field">
+              <label for="ine">Foto de la INE (la misma que manda el proyecto)</label>
+              <input class="input" id="ine" name="ine_imagen" type="file" accept="image/jpeg,image/png,image/webp" required />
+            </div>
+            <div class="field">
+              <label for="frase">Frase que leerá la persona ({{ min_palabras }} a {{ max_palabras }} palabras)</label>
+              <textarea class="input" id="frase" name="frase" maxlength="500" required>{{ frase }}</textarea>
+            </div>
+            <div class="fila2">
+              <div class="field">
+                <label for="umbral">% mínimo de rostro contra la INE</label>
+                <input class="input" id="umbral" name="umbral_rostro" type="number" min="1" max="100" step="0.5"
+                       value="{{ umbrales.rostro_ine_porcentaje }}" />
+              </div>
+              <div class="field">
+                <label for="intentos">Intentos</label>
+                <input class="input" id="intentos" name="max_intentos" type="number" min="1" max="5"
+                       value="{{ umbrales.intentos_por_sesion }}" />
+              </div>
+            </div>
+            <button class="btn btn-primary btn-block" type="submit">Crear la prueba y mostrar el QR</button>
+            <p class="nota">La persona escanea el QR y hace la captura real en su teléfono. Deja el % en {{ umbrales.rostro_ine_porcentaje }} para que el resultado sea igual al del servidor.</p>
+          </form>
+        </div>
+        <div class="card lab-card">
+          <h2>Umbrales de esta instancia</h2>
+          <dl class="kv">
+            <dt>Rostro contra la INE</dt><dd>{{ umbrales.rostro_ine_porcentaje }}%</dd>
+            <dt>Misma persona en gestos</dt><dd>{{ umbrales.misma_persona_porcentaje }}%</dd>
+            <dt>Frase</dt><dd>{{ umbrales.frase_porcentaje }}%</dd>
+            <dt>Persona real</dt><dd>{{ (umbrales.persona_real_probabilidad * 100) | round(1) }}%</dd>
+            <dt>Coseno que vale 50%</dt><dd>{{ umbrales.similitud_coseno_al_50 }}</dd>
+            <dt>Modelo de voz</dt><dd>{{ umbrales.modelo_voz }}</dd>
+          </dl>
+          <p class="nota">Si en el servidor hay <code>FACE_MATCH_PERCENT</code>, <code>SAME_PERSON_PERCENT</code> o <code>ASR_MODEL_SIZE</code>
+             en el <code>.env</code>, usa los mismos valores aquí.</p>
+        </div>
+      </div>
+
+      <div class="card lab-card">
+        <h2>Pruebas anteriores</h2>
+        {% if previas %}
+        <div class="table-wrap">
+          <table class="lab-tabla">
+            <thead><tr><th>Fecha</th><th>Prueba</th><th>Intentos</th><th>Rostro (último)</th><th>Resultado</th><th></th></tr></thead>
+            <tbody>
+              {% for f in previas %}
+              <tr>
+                <td>{{ (f.creada or "")[:16] | replace("T", " ") }}</td>
+                <td>{{ f.etiqueta }}</td>
+                <td>{{ f.intentos }}</td>
+                <td>{% if f.pct is not none %}{{ f.pct }}%{% else %}—{% endif %}</td>
+                <td>
+                  {% if f.aprobada %}<span class="pill ok">Aprobada</span>
+                  {% elif f.aprobada == false %}<span class="pill bad">No aprobada</span>
+                  {% else %}<span class="pill">{{ f.estado }}</span>{% endif %}
+                </td>
+                <td><a class="btn btn-ghost btn-sm" href="/lab/resultado/{{ f.id }}">Ver</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="sub-muted" style="margin:0">Aún no hay pruebas.</p>
+        {% endif %}
+        <p class="nota">Cada prueba se guarda como JSON, sin imágenes, en <code>{{ carpeta }}</code>.</p>
+      </div>
+    </main>
+  </body>
+</html>

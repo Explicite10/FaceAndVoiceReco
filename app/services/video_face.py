@@ -55,6 +55,7 @@ def best_faces_by_segment(
         return [None] * segments, {"max_faces_in_frame": 0, "multi_face_frames": 0, "first_multi_face_sec": None}
 
     candidates: list[tuple[int, float, float, dict]] = []
+    video_px = None
     frame_index = 0
     processed = 0
     max_faces = 0
@@ -104,7 +105,8 @@ def best_faces_by_segment(
             )
             if face_gray.size == 0:
                 continue
-            quality = face.score * sharpness(face_gray)
+            nitidez = sharpness(face_gray)
+            quality = face.score * nitidez
             live = real_probability(frame_bgr, face.bbox)
 
             crop = frame_rgb[cy1:cy2, cx1:cx2]
@@ -132,7 +134,11 @@ def best_faces_by_segment(
                 row=row,
             )
             candidates.append((frame_index, quality, live, {"crop": crop, "face": local, "time_sec": round(time_sec, 2),
-                                                            "frontal": de_frente(face.row), "giro": pose(face.row)[0]}))
+                                                            "frontal": de_frente(face.row), "giro": pose(face.row)[0],
+                                                            # Solo informativo: que tan grande y nitida se vio la cara.
+                                                            "cara_px": int(min(x2 - x1, y2 - y1)),
+                                                            "nitidez": round(nitidez, 2)}))
+            video_px = f"{w_img} x {h_img}"
     finally:
         cap.release()
 
@@ -165,5 +171,6 @@ def best_faces_by_segment(
         "max_faces_in_frame": max_faces,
         "multi_face_frames": multi_face_frames,
         "first_multi_face_sec": first_multi_face_sec,
+        "video_px": video_px,
     }
     return result, stats

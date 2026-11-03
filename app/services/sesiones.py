@@ -20,6 +20,7 @@ import os
 import secrets
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -38,6 +39,7 @@ from app.services.challenge import GESTURE_LABELS, consume_challenge, create_cha
 from app.services.errors import CheckError
 from app.services.face_service import read_as_np_rgb
 from app.services.identity_verification import UPLOAD_DIR, analyze_video, embed_id_image
+from app.services.image_quality import medir_cara
 from app.services.report import build_summary, user_reasons
 from app.services.text_norm import normalize_phrase
 from app.services.upload_io import ALLOWED_VIDEO_EXT, save_upload_to_temp
@@ -110,10 +112,17 @@ class Sesion:
     reto: dict | None = field(default=None, repr=False)
     informe: dict | None = field(default=None, repr=False)
     rostro_ine: bytes | None = field(default=None, repr=False)
+    # Tamano y nitidez de la cara de la INE (numeros, no la imagen): solo informativo.
+    medidas_ine: dict | None = None
     # {nombre: {archivo, tipo, bytes, ...}} en disco hasta evidencia_expira.
     evidencia: dict | None = field(default=None, repr=False)
     evidencia_expira: datetime | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    # Laboratorio local (LAB=true): mismo analisis, sin base ni webhook. Los
+    # intentos quedan en `historial` y `al_registrar(s)` corre tras cada uno.
+    local: bool = False
+    historial: list[dict] = field(default_factory=list, repr=False)
+    al_registrar: Callable[["Sesion"], None] | None = field(default=None, repr=False)
 
     def olvidar_biometria(self) -> None:
         self.id_emb = None
@@ -152,6 +161,8 @@ def _quitar_memoria(s: Sesion) -> None:
 
 async def _persistir(s: Sesion) -> None:
     """Guarda el resumen de la sesion. Un fallo de la base no debe tumbar al usuario."""
+    if s.local:
+        return
     try:
         await db.pool().execute(
             """
@@ -174,6 +185,12 @@ async def _registrar_intento(s: Sesion, aprobado: bool, checks: list[str], durac
                              respuesta: dict) -> None:
     logger.info("Intento %s de la sesion %s (%s): %s%s", s.intentos, s.id, s.proyecto_id,
                 "aprobado" if aprobado else "no aprobado", f" {', '.join(checks)}" if checks else "")
+    if s.local:
+        s.historial.append({"numero": s.intentos, "aprobado": aprobado, "checks_fallidos": checks,
+                            "duracion_ms": duracion_ms, "creado": _iso(ahora()), "respuesta": respuesta})
+        if s.al_registrar:
+            s.al_registrar(s)
+        return
     try:
         await db.pool().execute(
             "INSERT INTO intentos (sesion_id, numero, aprobado, checks_fallidos, duracion_ms, respuesta)"
@@ -283,7 +300,8 @@ async def _terminar_sin_resultado(s: Sesion, estado: str) -> None:
     s.finalizada = ahora()
     s.olvidar_en = ahora() + timedelta(minutes=RECORDAR_MINUTOS)
     await _persistir(s)
-    asyncio.get_running_loop().create_task(_avisar_fin_sin_resultado(s, estado))
+    if not s.local:
+        asyncio.get_running_loop().create_task(_avisar_fin_sin_resultado(s, estado))
 
 
 async def _avisar_fin_sin_resultado(s: Sesion, estado: str) -> None:
@@ -307,10 +325,14 @@ async def finalizar(s: Sesion) -> None:
         "sesion": {**vista(s), "estado": "completada", "url_captura": None, "finalizada": _iso(finalizada)},
         "resumen": resumen,
         "resultado": s.informe,
-        "intentos": await _intentos_de(s.id),
+        "intentos": s.historial if s.local else await _intentos_de(s.id),
         "evidencia": _evidencia_publica(s) if s.pide_evidencia else None,
     }
-    resultado = await entrega.enviar(s.webhook_url, s.webhook_secreto, "sesion.completada", datos)
+    if s.local:
+        # Sin webhook: el reporte se queda en el historial del laboratorio.
+        resultado = {"ok": True, "codigo": None, "error": None, "intentos": 0, "id": None}
+    else:
+        resultado = await entrega.enviar(s.webhook_url, s.webhook_secreto, "sesion.completada", datos)
     s.entrega = {k: resultado[k] for k in ("ok", "codigo", "error", "intentos", "id")}
     if resultado["ok"]:
         s.olvidar_biometria()
@@ -328,10 +350,11 @@ async def _procesar(s: Sesion, video_path: str, reto: dict, ventana: tuple[float
     t0 = time.time()
     informe = None
     datos_evidencia = None
+    medidas: dict = {}
     try:
         async with _procesamiento:
             informe = await analyze_video(video_path, s.id_emb, reto["phrase"], s.umbral_rostro, reto, t0,
-                                          ventana_frase=ventana)
+                                          ventana_frase=ventana, medidas=medidas)
             # Solo el intento que decide la sesion: los anteriores no se entregan.
             final = bool(informe and informe["result"]["approved"]) or s.intentos >= s.max_intentos
             if final and s.pide_evidencia:
@@ -361,7 +384,9 @@ async def _procesar(s: Sesion, video_path: str, reto: dict, ventana: tuple[float
         # Tambien si se agotan los intentos: la pantalla final dice por que no paso.
         s.motivos = user_reasons(informe)
         await _registrar_intento(s, aprobado, s.checks_fallidos, informe["processing_time_ms"] if informe else None,
-                                 {"motivos": s.motivos, "reporte": informe})
+                                 {"motivos": s.motivos, "reporte": informe,
+                                  # Fuera del reporte: el webhook no cambia.
+                                  "medidas": {"ine": s.medidas_ine, **medidas}})
         if aprobado or s.intentos >= s.max_intentos:
             s.informe = informe
             if datos_evidencia is not None:
@@ -380,7 +405,8 @@ async def mantenimiento() -> None:
             async with s.lock:
                 if s.estado in ACTIVOS and s.estado != "procesando":
                     await _terminar_sin_resultado(s, "expirada")
-        elif s.estado in TERMINADOS and s.olvidar_en and s.olvidar_en < ahora() and s.evidencia is None:
+        elif (s.estado in TERMINADOS and s.olvidar_en and s.olvidar_en < ahora() and s.evidencia is None
+              and not s.local):
             _quitar_memoria(s)
         if s.evidencia is not None and s.evidencia_expira and s.evidencia_expira < ahora():
             s.borrar_evidencia()
@@ -487,6 +513,7 @@ async def crear_sesion(
         id_emb = await embed_id_image(np_ine)
     except CheckError as exc:
         raise HTTPException(status_code=422, detail="No se detectó un rostro en ine_imagen.") from exc
+    medidas_ine = await asyncio.to_thread(medir_cara, np_ine)
     # Solo el recorte de la cara, y solo si se pidio: el resto de la INE se descarta.
     rostro_ine = await asyncio.to_thread(evidencia.recorte_rostro, np_ine) if incluir_rostro_ine else None
     del np_ine
@@ -516,6 +543,7 @@ async def crear_sesion(
         incluir_fotogramas=incluir_fotogramas,
         incluir_rostro_ine=incluir_rostro_ine,
         rostro_ine=rostro_ine,
+        medidas_ine=medidas_ine,
     )
     await _persistir(s)
     _guardar_memoria(s)

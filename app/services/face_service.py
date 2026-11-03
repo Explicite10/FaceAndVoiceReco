@@ -134,6 +134,8 @@ def compare_id_against_segments(
             "live_score": seg["live_score"],
             # Si la cara elegida de este tramo miraba de frente (en los gestos puede que no).
             "frontal": seg.get("frontal"),
+            "cara_px": seg.get("cara_px"),
+            "nitidez": seg.get("nitidez"),
         })
 
     found = [r["raw_similarity"] for r in results if r["face_found"]]
@@ -160,6 +162,7 @@ def compare_id_against_segments(
         "threshold_percent": float(threshold_percent),
         "segments": results,
         "multiple_faces": multiple_faces,
+        "video_px": face_stats.get("video_px"),
     }
 
 
@@ -191,7 +194,8 @@ def _compare_por_frase(
             results.append({"index": index, "role": "frase", "time_sec": seg["time_sec"], "face_found": True,
                             "raw_similarity": round(sim_ine, 6), "similarity_percent": pct_ine,
                             "is_match": pct_ine >= threshold_percent, "same_person_percent": None,
-                            "live_score": seg["live_score"], "frontal": seg.get("frontal")})
+                            "live_score": seg["live_score"], "frontal": seg.get("frontal"),
+                            "cara_px": seg.get("cara_px"), "nitidez": seg.get("nitidez")})
             continue
         emb = embed(seg["crop"], seg["face"])
         sim_misma = cosine_similarity(frase_emb, emb)
@@ -203,7 +207,7 @@ def _compare_por_frase(
                         "similarity_percent": similarity_to_percent_sigmoid(sim_seg_ine, mid, k),
                         "is_match": pct_misma >= settings.same_person_percent,
                         "same_person_percent": pct_misma, "live_score": seg["live_score"],
-                        "frontal": seg.get("frontal")})
+                        "frontal": seg.get("frontal"), "cara_px": seg.get("cara_px"), "nitidez": seg.get("nitidez")})
 
     gestos = [r for r in results if r["role"] != "frase"]
     misma_persona = all(r["face_found"] and r["is_match"] for r in gestos)
@@ -235,6 +239,7 @@ def _compare_por_frase(
         },
         "segments": results,
         "multiple_faces": multiple_faces,
+        "video_px": face_stats.get("video_px"),
     }
 
 

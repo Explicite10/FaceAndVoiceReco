@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    {% if activa %}<meta http-equiv="refresh" content="4" />{% endif %}
+    <title>Resultado · Laboratorio</title>
+    <link rel="icon" type="image/png" href="/static/logo.png" />
+    <link rel="stylesheet" href="/static/panel.css" />
+    <style>
+      .lab-card { padding: 20px; margin-bottom: 18px; }
+      .lab-card h2 { margin: 0 0 12px; font-size: 18px; color: var(--navy); }
+      .acciones { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+      .acciones form { margin: 0; }
+      .ine-grid { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 18px; align-items: start; }
+      @media (max-width: 700px) { .ine-grid { grid-template-columns: 1fr; } }
+      .foto { width: 100%; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+      .fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+      .fotos figure { margin: 0; } .fotos figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+      .avisos { margin: 12px 0 0; padding-left: 18px; color: #9a5b00; font-size: 14px; }
+      .lab-tabla { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+      .lab-tabla th, .lab-tabla td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+      .lab-tabla th { color: var(--muted); font-weight: 600; font-size: 13px; }
+      .bloques { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+      .bloque { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+      .bloque h4 { margin: 0 0 6px; font-size: 14px; color: var(--navy); }
+      .bajo { color: #b42318; font-weight: 700; } .alto { color: #067647; font-weight: 700; }
+      .nota { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+      .qr-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 24px; align-items: center; }
+      @media (max-width: 700px) { .qr-card { grid-template-columns: 1fr; justify-items: center; } }
+      .qr { background: #fff; padding: 8px; border-radius: 12px; border: 1px solid var(--border); line-height: 0; }
+      .qr-card ol { margin: 8px 0 0; padding-left: 20px; font-size: 15px; }
+      .qr-card li { margin-bottom: 6px; }
+      .url-tel { font-size: 12px; word-break: break-all; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    {% macro pct(valor, umbral) -%}
+      {%- if valor is none -%}—{%- else -%}
+      <span class="{{ 'alto' if valor >= umbral else 'bajo' }}">{{ valor }}%</span>
+      {%- endif -%}
+    {%- endmacro %}
+    {% macro bandera(v) -%}
+      {%- if v is none -%}<span class="pill">No evaluado</span>
+      {%- elif v -%}<span class="pill ok">Sí</span>
+      {%- else -%}<span class="pill bad">No</span>{%- endif -%}
+    {%- endmacro %}
+    <header class="topbar">
+      <div class="container">
+        <a class="brand" href="/lab"><img src="/static/logo.png" alt="" /><span>Prueba de vida · Laboratorio</span></a>
+      </div>
+    </header>
+    <section class="panel-hero">
+      <div class="container">
+        <p class="eyebrow">Resultado de la prueba</p>
+        <h1>{{ p.etiqueta }}</h1>
+        <p>
+          {% if p.aprobada %}<span class="pill ok">Aprobada</span>
+          {% elif p.aprobada == false %}<span class="pill bad">No aprobada</span>
+          {% elif en_proceso %}<span class="pill warn">Analizando…</span>
+          {% elif p.estado == "pendiente" %}<span class="pill warn">Esperando al teléfono</span>
+          {% else %}<span class="pill">{{ p.estado }}</span>{% endif %}
+          · {{ p.historial | length }} intento(s){% if p.intentos_max %} de {{ p.intentos_max }}{% endif %}
+          · mínimo de rostro {{ p.umbral_rostro }}%
+        </p>
+        <div class="acciones">
+          {% if p.en_memoria %}
+          <form method="post" action="/lab/repetir/{{ p.id }}"><button class="btn btn-primary" type="submit">Otra prueba con la misma INE</button></form>
+          {% endif %}
+          <a class="btn btn-ghost" href="/lab">Nueva prueba</a>
+        </div>
+      </div>
+    </section>
+    <main class="container">
+      {% if p.qr %}
+      <div class="card lab-card qr-card">
+        <div class="qr">{{ p.qr | safe }}</div>
+        <div>
+          <h2>{% if p.historial %}Puede reintentar en el mismo teléfono{% else %}Escanea con el teléfono{% endif %}</h2>
+          <ol>
+            <li>Abre la cámara del teléfono y escanea el código. El teléfono debe estar en <b>la misma red WiFi</b> que esta computadora.</li>
+            <li>La primera vez el navegador dice <b>"La conexión no es privada"</b>: toca <b>Configuración avanzada → Continuar</b>
+                (en iPhone: <b>Mostrar detalles → visitar este sitio web</b>). Es el certificado de esta computadora.</li>
+            <li>Haz la prueba como la haría el cliente. Los resultados aparecen aquí solos.</li>
+          </ol>
+          <p class="url-tel">{{ p.url_telefono }}</p>
+          <p class="nota">Si no abre en el teléfono, revisa que Windows permita a Python en redes privadas, o
+            <a href="{{ p.url_captura }}">haz la prueba en esta computadora</a>.</p>
+        </div>
+      </div>
+      {% elif en_proceso %}
+      <div class="card lab-card"><h2>Analizando el video…</h2><p class="sub-muted" style="margin:0">Esta página se actualiza sola.</p></div>
+      {% endif %}
+      <div class="card lab-card">
+        <h2>Foto de la INE</h2>
+        <div class="ine-grid">
+          <div>
+            {% if p.rostro_ine %}<img class="foto" src="/lab/resultado/{{ p.id }}/rostro-ine.jpg" alt="Cara detectada en la INE" />
+            {% else %}<p class="sub-muted">La imagen ya no está en memoria.</p>{% endif %}
+          </div>
+          <div>
+            {% set d = p.diagnostico or {} %}
+            <dl class="kv">
+              <dt>Tamaño de la imagen</dt><dd>{{ d.imagen_px }}</dd>
+              <dt>Caras detectadas</dt><dd>{{ d.caras_detectadas }}</dd>
+              {% if d.cara %}
+              <dt>Tamaño de la cara</dt><dd>{{ d.cara.size_px }} px (el modelo trabaja a 112 px)</dd>
+              <dt>Nitidez</dt><dd>{{ d.cara.sharpness }}</dd>
+              <dt>Brillo</dt><dd>{{ d.cara.brightness }} (0 a 255)</dd>
+              <dt>Confianza del detector</dt><dd>{{ d.cara.detector_score }}</dd>
+              <dt>Giro / inclinación</dt><dd>{{ d.cara.giro }} / {{ d.cara.inclinacion }}</dd>
+              {% endif %}
+            </dl>
+            {% if d.avisos %}<ul class="avisos">{% for a in d.avisos %}<li>{{ a }}</li>{% endfor %}</ul>
+            {% else %}<p class="nota">Sin problemas evidentes en la foto de la INE.</p>{% endif %}
+          </div>
+        </div>
+        {% if p.fotogramas %}
+        <h3 style="margin:18px 0 8px;font-size:15px">Fotogramas de frente del intento final</h3>
+        <div class="fotos">
+          {% for n in p.fotogramas %}
+          <figure><img class="foto" src="/lab/resultado/{{ p.id }}/fotograma/{{ n }}.jpg" alt="Fotograma {{ n }}" /><figcaption>Fotograma {{ n }}</figcaption></figure>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="card lab-card">
+        <h2>Intentos</h2>
+        {% if not p.intentos %}
+        <p class="sub-muted" style="margin:0">{% if en_proceso %}Analizando el video, esta página se actualiza sola…{% else %}La persona todavía no envía una grabación.{% endif %}</p>
+        {% endif %}
+        {% for i in p.intentos %}
+        <div class="intento">
+          <div class="intento-head"><b>Intento {{ i.numero }}</b>
+            <span>{% if i.aprobado %}<span class="pill ok">Aprobado</span>{% else %}<span class="pill bad">No aprobado</span>{% endif %}</span></div>
+          <div class="sub-muted">{{ (i.creado or "")[:19] | replace("T", " ") }} UTC{% if i.duracion_ms %} · análisis de {{ (i.duracion_ms / 1000) | round(1) }} s{% endif %}</div>
+          {% if i.texto %}<p style="margin:8px 0 0">{{ i.texto }}</p>{% endif %}
+          {% if i.motivos %}<p class="sub-muted" style="margin:8px 0 2px">Lo que vio la persona:</p>
+          <ul>{% for m in i.motivos %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+
+          {% if i.tramos %}
+          <table class="lab-tabla">
+            <thead><tr><th>Tramo</th><th>Seg.</th><th>Contra la INE</th><th>Coseno</th><th>Misma persona</th><th>De frente</th><th>Cara en video</th></tr></thead>
+            <tbody>
+              {% for t in i.tramos %}
+              <tr>
+                <td>{{ t.index }}{% if t.role %} · {{ t.role }}{% endif %}</td>
+                <td>{{ t.time_sec | round(2) if t.time_sec is not none else "—" }}</td>
+                <td>{% if t.face_detected %}{{ pct(t.similarity_percent, p.umbral_rostro) }}{% if t.role and t.role != "frase" %} <small class="sub-muted">(referencia)</small>{% endif %}{% else %}sin cara{% endif %}</td>
+                <td>{{ t.similarity_score if t.similarity_score is not none else "—" }}</td>
+                <td>{% if t.same_person_percent is not none %}{{ pct(t.same_person_percent, umbrales.misma_persona_porcentaje) }}{% else %}—{% endif %}</td>
+                <td>{{ "sí" if t.frontal else ("no" if t.frontal == false else "—") }}</td>
+                <td>{% if t.cara_px %}<span class="{{ 'bajo' if t.cara_px < 112 else '' }}">{{ t.cara_px }} px</span>{% else %}—{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if i.video_px %}<p class="nota">Video recibido: {{ i.video_px }} px. La cara en rojo mide menos de 112 px (el tamaño al que compara el modelo): suele indicar que el teléfono estaba lejos.</p>{% endif %}
+          <p class="nota">Con tramo de frase, solo el tramo <b>frase</b> decide contra la INE; los de gestos se comparan contra la frase (misma persona).</p>
+          {% endif %}
+
+          {% set r = i.resumen %}
+          {% if r %}
+          <div class="bloques">
+            <div class="bloque"><h4>Rostro</h4><dl class="kv">
+              <dt>Coincide con la INE</dt><dd>{{ bandera(r.rostro.coincide) }}</dd>
+              <dt>Similitud</dt><dd>{{ pct(r.rostro.similitud_porcentaje, r.rostro.umbral_porcentaje or p.umbral_rostro) }} (mínimo {{ r.rostro.umbral_porcentaje }}%)</dd>
+              <dt>Una sola persona</dt><dd>{{ bandera(r.rostro.una_sola_persona) }}</dd>
+              <dt>Misma persona</dt><dd>{{ bandera(r.rostro.misma_persona) }}</dd>
+            </dl></div>
+            <div class="bloque"><h4>Frase</h4><dl class="kv">
+              <dt>Coincide</dt><dd>{{ bandera(r.frase.coincide) }}</dd>
+              <dt>Coincidencia</dt><dd>{{ pct(r.frase.coincidencia_porcentaje, r.frase.umbral_porcentaje or 0) }} (mínimo {{ r.frase.umbral_porcentaje }}%)</dd>
+              <dt>Se pidió</dt><dd>{{ r.frase.esperada or "—" }}</dd>
+              <dt>Se escuchó</dt><dd>{{ r.frase.transcripcion or "—" }}</dd>
+            </dl></div>
+            <div class="bloque"><h4>Prueba de vida</h4><dl class="kv">
+              <dt>Persona real</dt><dd>{{ bandera(r.vida.persona_real) }}</dd>
+              <dt>Probabilidad</dt><dd>{{ pct(r.vida.probabilidad_real_porcentaje, r.vida.umbral_porcentaje or 0) }} (mínimo {{ r.vida.umbral_porcentaje }}%)</dd>
+              <dt>Labios sincronizados</dt><dd>{{ bandera(r.vida.labios_sincronizados) }}</dd>
+            </dl></div>
+            <div class="bloque"><h4>Gestos</h4><dl class="kv">
+              <dt>Completos</dt><dd>{{ bandera(r.gestos.completos) }}</dd>
+              <dt>En orden</dt><dd>{{ bandera(r.gestos.en_orden) }}</dd>
+              {% for g in r.gestos.detalle %}<dt>{{ g.gesto }}</dt><dd>{{ "detectado" if g.detectado else "no detectado" }}{% if g.segundo is not none %} (s {{ g.segundo }}){% endif %}</dd>{% endfor %}
+            </dl></div>
+          </div>
+          {% endif %}
+          {% if i.errores %}
+          <ul class="avisos">{% for e in i.errores %}<li>{{ e.component }}: {{ e.message }} <small class="mono">{{ e.code }}</small></li>{% endfor %}</ul>
+          {% endif %}
+          <details style="margin-top:10px"><summary>Reporte completo (JSON)</summary><pre class="json">{{ i.json }}</pre></details>
+        </div>
+        {% endfor %}
+        <p class="nota">Guardado en <code>pruebas_lab/{{ p.archivo }}</code>.</p>
+      </div>
+    </main>
+  </body>
+</html>

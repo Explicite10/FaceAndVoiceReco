@@ -49,6 +49,8 @@ async def lifespan(app: FastAPI):
         await sesiones.recuperar_al_arrancar()
     if settings.demo:
         logger.warning("DEMO activo: pagina de prueba en / y API directa sin llave si no hay API_KEYS.")
+    if settings.lab:
+        logger.warning("LAB activo: laboratorio en /lab sin llave. Solo para pruebas en local.")
     if not settings.admin_email or not settings.admin_password_hash:
         logger.warning("ADMIN_EMAIL / ADMIN_PASSWORD_HASH vacios: nadie puede entrar al panel.")
     tarea = asyncio.create_task(_mantenimiento())
@@ -100,6 +102,10 @@ app.include_router(sesiones.api)
 app.include_router(sesiones.captura_api)
 app.include_router(sesiones.paginas)
 app.include_router(panel_router)
+if settings.lab:
+    from app.lab import router as lab_router
+
+    app.include_router(lab_router)
 
 
 # Probador de frases (solo DEMO): para medir, con la voz de uno, que porcentaje

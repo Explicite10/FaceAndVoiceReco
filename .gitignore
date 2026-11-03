@@ -20,3 +20,7 @@ env/
 
 # Configuracion local de despliegue (dominio, etc.)
 .env
+
+# Laboratorio local (LAB=true): reportes de pruebas con personas reales
+/pruebas_lab/
+/.lab_cert/

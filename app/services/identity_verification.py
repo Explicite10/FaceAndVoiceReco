@@ -87,11 +87,14 @@ async def analyze_video(
     challenge: dict | None,
     started: float,
     ventana_frase: tuple[float, float | None] | None = None,
+    medidas: dict | None = None,
 ) -> dict:
     """Voz, rostro, prueba de vida y gestos sobre un video ya guardado en disco.
 
     `id_emb` es el vector de la INE, o el error de no haber encontrado su cara:
     asi ese caso sale en el reporte como cualquier otra validacion fallida.
+    Si se pasa `medidas`, ahi quedan el tamano y la nitidez de la cara en cada
+    tramo del video: solo informativo, fuera del reporte.
     """
     # Secuencial a proposito: todo es CPU-bound y en paralelo se pelea por los
     # mismos cores sin terminar antes. Los gestos van primero: con ellos se valida
@@ -101,6 +104,12 @@ async def analyze_video(
     gestures = await _run_part(_check_gestures(track, challenge["gestures"])) if challenge else None
     ventana = ventana_valida(ventana_frase, gestures)
     face = await _run_part(_compare_face(id_emb, video_path, match_threshold_percent, ventana))
+    if medidas is not None and face["ok"]:
+        medidas["video"] = {
+            "resolucion": face["result"].get("video_px"),
+            "tramos": [{"tramo": s["index"], "rol": s.get("role"), "cara_px": s.get("cara_px"),
+                        "nitidez": s.get("nitidez")} for s in face["result"]["segments"]],
+        }
     voice = await _run_part(verify_voice_from_path(video_path, expected_phrase, ventana))
     # Labios: el habla se mide en la frase y el silencio, en los cuadros sin gestos.
     liveness = await _run_part(check_liveness(video_path, face, track, ventana))

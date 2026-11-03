@@ -488,6 +488,13 @@
           const vio = r?.motivos?.length
             ? `<p class="sub-muted" style="margin:8px 0 2px">Lo que vio la persona:</p><ul>${r.motivos.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : "";
           const resumen = r?.reporte?.result?.summary ? `<p style="margin:8px 0 0">${esc(r.reporte.result.summary)}</p>` : "";
+          // Solo informativo: la cara chica (INE o video lejos) baja el porcentaje.
+          const m = r?.medidas;
+          const px = (v) => v != null ? `${v} px` : "—";
+          const medidas = m && (m.ine || m.video) ? `<p class="sub-muted" style="margin:8px 0 0">
+              Cara en la INE: <b>${esc(px(m.ine?.cara_px))}</b>${m.ine?.imagen_px ? ` (imagen ${esc(m.ine.imagen_px)})` : ""}
+              · cara en el video: <b>${esc((m.video?.tramos || []).map((t) => px(t.cara_px)).join(" / ") || "—")}</b>
+              ${m.video?.resolucion ? ` (video ${esc(m.video.resolucion)})` : ""}</p>` : "";
           const json = r ? `<details style="margin-top:8px"><summary>Respuesta completa (JSON)</summary>
               <pre class="json">${esc(JSON.stringify(r.reporte ?? r, null, 2))}</pre></details>` : "";
           html += `<div class="intento">
@@ -495,7 +502,7 @@
               <span>${i.aprobado ? '<span class="pill ok">Aprobado</span>' : '<span class="pill bad">No aprobado</span>'}</span></div>
             <div class="sub-muted">${fechaLarga(i.creado)}${i.duracion_ms != null ? ` · análisis de ${(i.duracion_ms / 1000).toFixed(1)} s` : ""}</div>
             ${fallos ? `<ul>${fallos}</ul>` : ""}
-            ${resumen}${vio}${json}
+            ${resumen}${medidas}${vio}${json}
           </div>`;
         }
         html += "</section>";

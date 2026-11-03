@@ -1,3 +1,6 @@
 -r requirements.txt
 pytest==8.3.4
 pytest-asyncio==0.24.0
+# Laboratorio local (scripts/lab.py): QR y certificado HTTPS para la red local.
+segno==1.6.6
+cryptography==44.0.0

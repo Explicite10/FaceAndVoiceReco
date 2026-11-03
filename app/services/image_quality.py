@@ -24,3 +24,23 @@ def face_quality(np_rgb: np.ndarray, face: Face) -> dict:
         "brightness": round(float(gray.mean()), 2),
         "detector_score": round(face.score, 4),
     }
+
+
+def medir_cara(np_rgb: np.ndarray) -> dict:
+    """Medidas de la cara de una imagen (la INE), sin guardar la imagen.
+
+    Solo informativo: el tamano de la cara pesa mucho en el porcentaje de
+    similitud (el modelo compara a 112 px). No interviene en la decision.
+    """
+    from app.services.face_engine import detect_faces, pick_best_face
+
+    h, w = np_rgb.shape[:2]
+    caras = detect_faces(np_rgb)
+    cara = pick_best_face(caras)
+    medidas = {"imagen_px": f"{w} x {h}", "caras": len(caras), "cara_px": None, "nitidez": None,
+               "brillo": None, "confianza": None}
+    if cara is not None:
+        q = face_quality(np_rgb, cara)
+        medidas.update(cara_px=q["size_px"], nitidez=q["sharpness"], brillo=q["brightness"],
+                       confianza=q["detector_score"])
+    return medidas

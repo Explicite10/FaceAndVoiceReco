@@ -142,6 +142,9 @@ class Settings(BaseModel):
     # Pagina de prueba completa en "/" y API directa abierta sin llaves, solo
     # para desarrollo. Apagado por defecto: olvidar la variable no abre la API.
     demo: bool = os.getenv("DEMO", "false").lower() in ("1", "true", "yes")
+    # Laboratorio en /lab para probar la captura real en local con una INE, sin
+    # base ni webhook. Solo en la maquina de uno: nunca en el servidor.
+    lab: bool = os.getenv("LAB", "false").lower() in ("1", "true", "yes")
 
     # ---------- Acceso ----------
     # Llaves fijas por variable de entorno (opcional). Los proyectos normales se
