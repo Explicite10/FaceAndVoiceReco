@@ -111,6 +111,8 @@ async def analyze_video(
                         "nitidez": s.get("nitidez")} for s in face["result"]["segments"]],
         }
     voice = await _run_part(verify_voice_from_path(video_path, expected_phrase, ventana))
+    if medidas is not None and voice["ok"]:
+        medidas["audio"] = voice["result"]["audio"].get("ruido")
     # Labios: el habla se mide en la frase y el silencio, en los cuadros sin gestos.
     liveness = await _run_part(check_liveness(video_path, face, track, ventana))
 

@@ -24,6 +24,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # GPU NVIDIA para la voz (ASR_DEVICE=cuda en .env): descomentar con
+    # nvidia-container-toolkit instalado y la imagen construida con GPU=1.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
   # Proyectos autorizados y resumen de sesiones. Sin video, INE ni datos de la cara.
   db:

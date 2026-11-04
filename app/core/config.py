@@ -66,6 +66,11 @@ class Settings(BaseModel):
     asr_cpu_threads: int = int(os.getenv("ASR_CPU_THREADS", "4"))
     asr_language: str = "es"             # fijo: el autodetect falla en clips cortos
     asr_beam_size: int = 5
+    # La frase esperada como contexto de Whisper: con ruido se inclina a oir esas
+    # palabras. Si no se dijo, los gates de voz y confianza siguen cortando.
+    asr_initial_prompt: bool = os.getenv("ASR_INITIAL_PROMPT", "true").lower() in ("1", "true", "yes")
+    # Pasa-altos y normalizacion de volumen antes del VAD y del ASR.
+    audio_clean: bool = os.getenv("AUDIO_CLEAN", "true").lower() in ("1", "true", "yes")
     asr_max_concurrency: int = int(os.getenv("ASR_MAX_CONCURRENCY", "1"))  # = cores / asr_cpu_threads
 
     # Gates de audio (antes y despues del ASR). El maximo cubre los gestos del

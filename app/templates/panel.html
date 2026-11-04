@@ -495,6 +495,10 @@
               Cara en la INE: <b>${esc(px(m.ine?.cara_px))}</b>${m.ine?.imagen_px ? ` (imagen ${esc(m.ine.imagen_px)})` : ""}
               · cara en el video: <b>${esc((m.video?.tramos || []).map((t) => px(t.cara_px)).join(" / ") || "—")}</b>
               ${m.video?.resolucion ? ` (video ${esc(m.video.resolucion)})` : ""}</p>` : "";
+          // Voz contra fondo: por debajo de 10 dB la transcripcion suele sufrir.
+          const a = m?.audio;
+          const audio = a && a.relacion_db != null ? `<p class="sub-muted" style="margin:4px 0 0">
+              Audio: voz ${esc(a.voz_db)} dB · fondo ${esc(a.fondo_db)} dB · diferencia <b class="${a.relacion_db < 10 ? "bad-text" : ""}">${esc(a.relacion_db)} dB</b>${a.limpiado ? " (limpiado)" : ""}</p>` : "";
           const json = r ? `<details style="margin-top:8px"><summary>Respuesta completa (JSON)</summary>
               <pre class="json">${esc(JSON.stringify(r.reporte ?? r, null, 2))}</pre></details>` : "";
           html += `<div class="intento">
@@ -502,7 +506,7 @@
               <span>${i.aprobado ? '<span class="pill ok">Aprobado</span>' : '<span class="pill bad">No aprobado</span>'}</span></div>
             <div class="sub-muted">${fechaLarga(i.creado)}${i.duracion_ms != null ? ` · análisis de ${(i.duracion_ms / 1000).toFixed(1)} s` : ""}</div>
             ${fallos ? `<ul>${fallos}</ul>` : ""}
-            ${resumen}${medidas}${vio}${json}
+            ${resumen}${medidas}${audio}${vio}${json}
           </div>`;
         }
         html += "</section>";

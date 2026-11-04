@@ -35,6 +35,12 @@ WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
+# GPU=1: librerias CUDA que necesita faster-whisper (CTranslate2) para correr
+# Whisper en la tarjeta. Solo con nvidia-container-toolkit en el servidor.
+ARG GPU=0
+RUN if [ "$GPU" = "1" ]; then pip install nvidia-cublas-cu12==12.4.5.8 nvidia-cudnn-cu12==9.1.0.70; fi
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.12/site-packages/nvidia/cudnn/lib
+
 # Modelo de ASR horneado en la imagen: sin esto, el primer request tras cada
 # reinicio se descargaria ~250MB desde Hugging Face.
 ARG ASR_MODEL_SIZE=small
