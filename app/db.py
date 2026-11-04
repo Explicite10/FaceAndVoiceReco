@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS intentos (
 -- Lo que se le respondio en cada intento: motivos que vio el usuario y el
 -- reporte JSON (decision, checks, porcentajes). Sin video, fotos ni vectores.
 ALTER TABLE intentos ADD COLUMN IF NOT EXISTS respuesta jsonb;
+-- Con que navegador abrio la persona la captura y si le faltaba algo (compatibilidad).
+ALTER TABLE sesiones ADD COLUMN IF NOT EXISTS navegador jsonb;
 """
 
 

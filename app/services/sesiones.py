@@ -99,6 +99,8 @@ class Sesion:
     entrega: dict | None = None
     olvidar_en: datetime | None = None
     # Marca del proyecto en la pantalla (opcional).
+    # Navegador con el que se abrio la captura y lo que le faltaba (compatibilidad).
+    navegador: dict | None = None
     titulo: str | None = None
     color_primario: str | None = None
     color_secundario: str | None = None
@@ -168,15 +170,18 @@ async def _persistir(s: Sesion) -> None:
         await db.pool().execute(
             """
             INSERT INTO sesiones (id, proyecto_id, referencia_externa, estado, aprobada, intentos, max_intentos,
-                                  checks_fallidos, url_retorno, webhook_url, metadata, entrega, creada, expira, finalizada)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                                  checks_fallidos, url_retorno, webhook_url, metadata, entrega, creada, expira, finalizada,
+                                  navegador)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             ON CONFLICT (id) DO UPDATE SET
                 estado = EXCLUDED.estado, aprobada = EXCLUDED.aprobada, intentos = EXCLUDED.intentos,
                 checks_fallidos = EXCLUDED.checks_fallidos, entrega = EXCLUDED.entrega,
-                expira = EXCLUDED.expira, finalizada = EXCLUDED.finalizada
+                expira = EXCLUDED.expira, finalizada = EXCLUDED.finalizada,
+                navegador = COALESCE(EXCLUDED.navegador, sesiones.navegador)
             """,
             s.id, s.proyecto_id, s.referencia_externa, s.estado, s.aprobada, s.intentos, s.max_intentos,
             s.checks_fallidos, s.url_retorno, s.webhook_url, s.metadata, s.entrega, s.creada, s.expira, s.finalizada,
+            s.navegador,
         )
     except Exception:
         logger.exception("No se pudo guardar la sesion %s", s.id)
@@ -667,6 +672,42 @@ async def logo_captura(token: str):
         "Cache-Control": "private, max-age=3600",
         "X-Content-Type-Options": "nosniff",
     })
+
+
+# Lo que la pagina revisa antes de empezar. Las llaves son las que manda captura.js.
+_REQUISITOS = {
+    "https": "Conexión segura (HTTPS)",
+    "camara": "Acceso a la cámara (getUserMedia)",
+    "grabacion": "Grabación de video (MediaRecorder)",
+    "modulos": "JavaScript moderno (módulos)",
+}
+
+
+@captura_api.post("/{token}/navegador", status_code=204)
+async def navegador_captura(token: str, request: Request):
+    """La pagina reporta con que navegador abrio y si le falta algo para funcionar.
+
+    Solo informativo: se guarda en la sesion para ver en el panel que telefonos fallan.
+    """
+    s = _sesion_por_token(token)
+    try:
+        datos = await request.json()
+        assert isinstance(datos, dict)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Se esperaba un objeto JSON.")
+    faltan = [str(f)[:40] for f in (datos.get("faltan") or []) if isinstance(f, str)][:10]
+    s.navegador = {
+        "agente": str(datos.get("agente") or "")[:400],
+        "faltan": faltan,
+        "detector": bool(datos.get("detector", True)),
+        "compatible": not faltan,
+        "recibido": ahora().isoformat(),
+    }
+    if faltan:
+        logger.warning("Navegador incompatible en la sesion %s (%s): faltan %s | %s", s.id, s.proyecto_id,
+                       ", ".join(_REQUISITOS.get(f, f) for f in faltan), s.navegador["agente"])
+    await _persistir(s)
+    return Response(status_code=204)
 
 
 @captura_api.post("/{token}/reto")

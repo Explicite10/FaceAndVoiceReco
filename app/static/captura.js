@@ -123,6 +123,29 @@ async function loadDetector() {
 
 // ---------------------------------------------------------------- arranque
 
+// Lo que el navegador necesita para la captura. Devuelve las llaves de lo que falta
+// (vacio = compatible). Las mismas llaves se muestran en el panel.
+function compatibilidad() {
+  const faltan = [];
+  if (!window.isSecureContext) faltan.push("https");
+  if (!navigator.mediaDevices?.getUserMedia) faltan.push("camara");
+  if (!window.MediaRecorder || !pickMime()) faltan.push("grabacion");
+  return faltan;
+}
+// El detector de rostro en vivo (MediaPipe) necesita WebAssembly y un Worker; sin
+// ellos la pagina guia por tiempo y el servidor valida igual.
+const puedeDetectar = () => !!(window.WebAssembly && window.Worker && window.createImageBitmap);
+let incompatible = [];
+
+async function reportarNavegador(faltan) {
+  try {
+    await fetch(`${API}/navegador`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
+      body: JSON.stringify({ agente: navigator.userAgent, faltan, detector: puedeDetectar() }),
+    });
+  } catch {}
+}
+
 async function arrancar() {
   let config;
   try {
@@ -131,7 +154,9 @@ async function arrancar() {
     resultado(false, "Este enlace no es válido o ya venció", "Vuelve a iniciar desde el sitio donde comenzaste tu trámite.");
     return;
   }
-  detector = loadDetector();
+  incompatible = compatibilidad();
+  reportarNavegador(incompatible);
+  if (!incompatible.length) detector = loadDetector();
   listo();
   ruta(config, false);
 }
@@ -162,6 +187,19 @@ function inicio(c) {
     llenarMotivos(ul, c.motivos);
     aviso.append(titulo, ul);
     aviso.hidden = false;
+  }
+  if (incompatible.length) {
+    const aviso = $("aviso");
+    aviso.replaceChildren();
+    const titulo = document.createElement("p");
+    titulo.textContent = "Este navegador no puede hacer la verificación.";
+    const texto = document.createElement("span");
+    texto.textContent = incompatible.includes("https")
+      ? "La página debe abrirse con una conexión segura (https)."
+      : "Abre este mismo enlace en Chrome o Safari actualizados. Si llegaste desde otra app (correo, WhatsApp, un lector de QR), toca \"Abrir en el navegador\".";
+    aviso.append(titulo, texto);
+    aviso.hidden = false;
+    $("btnComenzar").disabled = true;
   }
   // En un reintento ya conoce el proceso: se muestra lo que fallo y el boton, sin la explicacion.
   $("sInicio").classList.toggle("repite", c.intentos > 0);

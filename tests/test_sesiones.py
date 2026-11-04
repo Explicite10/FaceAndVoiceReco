@@ -453,3 +453,18 @@ def test_texto_legible_sobre_el_color_primario():
     assert texto_sobre("#f5c400") == "#111111"
     assert texto_sobre("#1b56d6") == "#ffffff"
     assert texto_sobre("#000000") == "#ffffff"
+
+
+async def test_navegador_de_la_captura_queda_en_la_sesion(entorno, caplog):
+    c = entorno["cliente"]
+    token = _token(await _crear(entorno))
+    r = await c.post(f"/api/v1/captura/{token}/navegador",
+                     json={"agente": "Mozilla/5.0 (Linux; Android 6.0)", "faltan": ["grabacion"], "detector": False})
+    assert r.status_code == 204
+    assert "Navegador incompatible" in caplog.text and "MediaRecorder" in caplog.text
+    s = sesiones._sesiones[sesiones._por_token[token]]
+    assert s.navegador["compatible"] is False and s.navegador["faltan"] == ["grabacion"]
+    assert (await c.post(f"/api/v1/captura/{token}/navegador", json=[1])).status_code == 422
+    # Un navegador que si puede: queda como compatible.
+    await c.post(f"/api/v1/captura/{token}/navegador", json={"agente": "Chrome", "faltan": []})
+    assert s.navegador["compatible"] is True and s.navegador["detector"] is True

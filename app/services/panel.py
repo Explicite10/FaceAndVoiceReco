@@ -222,7 +222,7 @@ async def detalle_sesion(sesion_id: str) -> dict | None:
     sesion = {
         k: s[k] for k in ("id", "proyecto_id", "proyecto", "referencia_externa", "estado", "resultado", "aprobada",
                           "entrega_fallida", "intentos", "max_intentos", "url_retorno", "webhook_url",
-                          "metadata", "entrega")
+                          "metadata", "entrega", "navegador")
     }
     sesion["checks_fallidos"] = list(s["checks_fallidos"])
     for k in ("creada", "expira", "finalizada"):

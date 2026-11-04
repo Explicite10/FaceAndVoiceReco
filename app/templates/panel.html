@@ -530,12 +530,24 @@
           ["Regresa a", s.url_retorno ? `<span class="mono">${esc(s.url_retorno)}</span>` : "—"],
           ["Creada", fechaLarga(s.creada)],
           ["Vence", fechaLarga(s.expira)],
+          ["Navegador", navegador(s.navegador)],
         ]) + "</section>";
 
         if (s.metadata && Object.keys(s.metadata).length) {
           html += `<section class="reg-seccion"><h3>Metadata del proyecto</h3><pre class="json">${esc(JSON.stringify(s.metadata, null, 2))}</pre></section>`;
         }
         $("regCuerpo").innerHTML = html;
+      }
+
+      // Con que abrio la persona la captura y si le faltaba algo para que funcionara.
+      const REQUISITOS = { https: "conexión segura (HTTPS)", camara: "acceso a la cámara", grabacion: "grabación de video (MediaRecorder)", modulos: "JavaScript moderno" };
+      function navegador(n) {
+        if (!n) return '<span class="sub-muted">sin dato (no abrió la página)</span>';
+        const faltan = (n.faltan || []).map((f) => REQUISITOS[f] || f);
+        const estado = faltan.length
+          ? `<b class="bad-text">No compatible:</b> le falta ${esc(faltan.join(", "))}. `
+          : n.detector === false ? '<span class="sub-muted">Compatible, sin detector de rostro en vivo (guiado por tiempo).</span> ' : "";
+        return `${estado}<span class="mono sub-muted" style="word-break:break-all">${esc(n.agente || "—")}</span>`;
       }
     </script>
     {% endif %}
