@@ -8,6 +8,7 @@ from faster_whisper.vad import VadOptions, get_speech_timestamps
 from app.core.config import settings
 from app.services.asr_engine import get_model, get_semaphore
 from app.services.errors import CheckError
+from app.services.audio_clean import limpiar, medir_ruido
 from app.services.audio_extract import (
     SAMPLE_RATE,
     AudioExtractionError,
@@ -18,14 +19,14 @@ from app.services.phrase_match import score_phrase
 logger = logging.getLogger("uvicorn.error")
 
 
-def _measure_speech(audio: np.ndarray) -> tuple[float, int]:
+def _measure_speech(audio: np.ndarray) -> tuple[float, int, dict]:
     vad_options = VadOptions(min_silence_duration_ms=300, speech_pad_ms=200)
     chunks = get_speech_timestamps(audio, vad_options, sampling_rate=SAMPLE_RATE)
     samples = sum(c["end"] - c["start"] for c in chunks)
-    return samples / SAMPLE_RATE, len(chunks)
+    return samples / SAMPLE_RATE, len(chunks), medir_ruido(audio, chunks)
 
 
-def _transcribe(audio: np.ndarray, language: str) -> dict:
+def _transcribe(audio: np.ndarray, language: str, expected: str | None = None) -> dict:
     model = get_model()
     segments, info = model.transcribe(
         audio,
@@ -36,6 +37,7 @@ def _transcribe(audio: np.ndarray, language: str) -> dict:
         vad_filter=True,
         word_timestamps=True,
         no_speech_threshold=settings.max_no_speech_prob,
+        initial_prompt=expected if settings.asr_initial_prompt and expected else None,
     )
 
     # transcribe() devuelve un generador perezoso: el computo real ocurre aqui.
@@ -199,13 +201,17 @@ async def verify_voice_from_path(
     audio, ventana_info = recortar_ventana(audio, ventana)
     audio_info["ventana_frase"] = ventana_info
     duration = len(audio) / SAMPLE_RATE
+    if settings.audio_clean:
+        audio = await asyncio.to_thread(limpiar, audio)
 
-    speech_sec, n_chunks = await asyncio.to_thread(_measure_speech, audio)
+    speech_sec, n_chunks, ruido = await asyncio.to_thread(_measure_speech, audio)
     speech_ratio = speech_sec / duration if duration else 0.0
     audio_info.update(
         speech_duration_sec=round(speech_sec, 2),
         speech_ratio=round(speech_ratio, 4),
         speech_segments=n_chunks,
+        # Informativo (no va al reporte): voz vs. fondo en dB.
+        ruido={**ruido, "limpiado": settings.audio_clean},
     )
 
     # Sin voz suficiente Whisper alucina texto plausible: cortar aqui.
@@ -224,7 +230,7 @@ async def verify_voice_from_path(
         )
 
     async with get_semaphore():
-        asr = await asyncio.to_thread(_transcribe, audio, settings.asr_language)
+        asr = await asyncio.to_thread(_transcribe, audio, settings.asr_language, expected)
 
     signals: list[str] = []
     if asr["no_speech_prob"] > settings.max_no_speech_prob:

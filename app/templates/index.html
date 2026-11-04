@@ -902,7 +902,10 @@
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-            audio: { echoCancellation: true, noiseSuppression: true },
+            // Mono a 48 kHz: lo que mejor codifica Opus; el supresor del navegador quita
+            // zumbidos constantes (no voces de fondo).
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+                     channelCount: { ideal: 1 }, sampleRate: { ideal: 48000 } },
           });
         } catch (e) {
           stream = null;
@@ -1036,10 +1039,12 @@
 
         const mime = pickMime();
         const chunks = [];
-        // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida.
+        // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida. El audio a
+        // 96 kbps: algunos Android graban a 32 kbps por omision y la voz llega apagada.
         let recorder;
         try {
-          recorder = new MediaRecorder(streamGrabacion, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
+          recorder = new MediaRecorder(streamGrabacion, { ...(mime ? { mimeType: mime } : {}),
+                                                          videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 96_000 });
         } catch {
           // Algunos navegadores rechazan el formato o la tasa: se deja que elijan.
           recorder = new MediaRecorder(streamGrabacion);
