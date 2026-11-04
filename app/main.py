@@ -60,7 +60,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+class _EstaticosFrescos(StaticFiles):
+    """CSS y JS se revalidan en cada carga (ETag, 304 si no cambiaron): sin esto
+    el navegador se queda con una copia vieja de captura.js tras un despliegue."""
+
+    def file_response(self, *args, **kwargs):
+        respuesta = super().file_response(*args, **kwargs)
+        respuesta.headers["Cache-Control"] = "no-cache"
+        return respuesta
+
+
+app.mount("/static", _EstaticosFrescos(directory="app/static"), name="static")
 
 if settings.cors_origins:
     app.add_middleware(
