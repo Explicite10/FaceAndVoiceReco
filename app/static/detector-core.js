@@ -38,6 +38,8 @@ function faceInfo(res) {
     turn: w > 1e-3 ? (p[1].x - (a + b) / 2) / w : null,
     blink: ((bs.eyeBlinkLeft ?? 0) + (bs.eyeBlinkRight ?? 0)) / 2,
     noseX: p[1].x, chinY: p[152].y,
+    // Ancho de la cara como fraccion del cuadro: dice si esta cerca o lejos.
+    ancho: w,
   };
 }
 

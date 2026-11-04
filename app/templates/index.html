@@ -186,6 +186,11 @@
         transition: border-color .2s;
       }
       .stage.encuadre.con-rostro .guide::after { border-style: solid; border-color: var(--aqua); }
+      .stage.encuadre.ajustar .guide::after { border-style: solid; border-color: #ffb547; }
+      .guide-text {
+        position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 3; white-space: nowrap;
+        padding: 6px 12px; border-radius: 999px; background: rgba(6,24,51,.75); color: #fff; font-size: 13px; font-weight: 600;
+      }
       .chip {
         position: absolute; top: 12px; left: 12px; z-index: 3; display: inline-flex; align-items: center; gap: 8px;
         padding: 6px 11px; border-radius: 999px; background: rgba(6,24,51,.7); color: #fff;
@@ -359,7 +364,7 @@
                   <span class="ph-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></span>
                   <span>La cámara se activa al iniciar.<br />Busca buena luz y un lugar sin ruido.</span>
                 </div>
-                <div class="guide" aria-hidden="true"></div>
+                <div class="guide" aria-hidden="true"><span class="guide-text" id="guiaTexto" hidden></span></div>
                 <div class="chip" id="rec" hidden><span class="dot"></span><span id="recTiempo">0:00</span></div>
                 <div class="chip mic" id="mic" hidden title="Nivel del micrófono">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
@@ -947,7 +952,7 @@
         const v = $("video");
         v.srcObject = null; v.src = url; v.muted = false; v.controls = true;
         v.classList.remove("mirror");
-        $("stage").classList.remove("encuadre", "con-rostro");
+        $("stage").classList.remove("encuadre", "con-rostro", "ajustar");
       }
 
       async function iniciarIntento() {
@@ -1014,7 +1019,7 @@
         $("bien").hidden = true;
         $("cuentaAtras").hidden = true;
         stage.classList.add("encuadre");
-        stage.classList.remove("con-rostro");
+        stage.classList.remove("con-rostro", "ajustar");
         const btnGrabar = $("btnGrabar");
         btnGrabar.hidden = false;
         btnGrabar.disabled = true;
@@ -1022,10 +1027,11 @@
         refreshSend();
 
         // La vista se arma debajo del cargador: asi el video ya se esta pintando.
-        const [hayImagen] = await Promise.all([
-          camaraLista(video),
-          Promise.race([detector, esperarMs(6000)]),
-        ]);
+        const hayImagen = await camaraLista(video);
+        // El detector carga desde que abre la pagina. El cargador se queda hasta que
+        // este listo: si se quitara antes, el boton seguiria gris sin explicacion.
+        cargando("Preparando la verificación", "Un momento, estamos cargando el detector de rostro.");
+        await Promise.race([detector, esperarMs(45000)]);
         if (!hayImagen) $("pista").textContent = "Se ve muy oscuro. Busca más luz para que te veamos bien.";
         listo();
 
@@ -1117,7 +1123,7 @@
           if (medidor) medidor.pico = 0;
           inicioRec = performance.now();
           $("rec").hidden = false;
-          stage.classList.remove("encuadre", "con-rostro");
+          stage.classList.remove("encuadre", "con-rostro", "ajustar");
           fase = "gesto";
           paso = -1;
           siguientePaso();
@@ -1143,12 +1149,28 @@
           tic();
         };
 
-        // Solo deja empezar con el rostro a la vista (sin detector, de inmediato).
-        function encuadre(veRostro) {
-          const ok = !det || veRostro;
+        // Ancho de la cara como fraccion del cuadro. A 640 px de ancho, 0.2 son 128 px:
+        // el modelo compara a 112 px, asi que abajo de eso el parecido con la INE baja.
+        function distanciaCara(f) {
+          if (f.ancho == null) return "ok";
+          if (f.ancho < 0.2) return "lejos";
+          if (f.ancho > 0.62) return "cerca";
+          return "ok";
+        }
+
+        // Solo deja empezar con el rostro a la vista y a buena distancia (sin detector, de inmediato).
+        function encuadre(veRostro, f) {
+          const distancia = det && veRostro && f ? distanciaCara(f) : "ok";
+          const ok = !det || (veRostro && distancia === "ok");
           btnGrabar.disabled = !ok;
           stage.classList.toggle("con-rostro", ok);
+          stage.classList.toggle("ajustar", veRostro && !ok);
           $("instruccion").textContent = ok ? "Todo listo para empezar" : "Coloca tu rostro dentro del óvalo";
+          const texto = $("guiaTexto");
+          if (!det) { texto.hidden = true; return; }
+          texto.textContent = !veRostro ? "Coloca tu rostro dentro del óvalo"
+            : distancia === "lejos" ? "Acércate un poco" : distancia === "cerca" ? "Aléjate un poco" : "Así está bien";
+          texto.hidden = false;
         }
 
         function cumplido(gesto, f, hands) {
@@ -1314,7 +1336,7 @@
           if (f) lastFace = f;
           if (fase === "encuadre") {
             faceRun = f ? faceRun + 1 : 0;
-            encuadre(faceRun >= TH.faceFrames);
+            encuadre(faceRun >= TH.faceFrames, f);
           } else if (fase === "gesto") {
             const gesto = gestos[paso].gesture;
             const hecho = det ? cumplido(gesto, f, hands) : now - desde > 3500;
