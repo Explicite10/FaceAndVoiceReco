@@ -134,7 +134,7 @@
         {% for i in p.intentos %}
         <div class="intento">
           <div class="intento-head"><b>Intento {{ i.numero }}</b>
-            <span>{% if i.aprobado %}<span class="pill ok">Aprobado</span>{% else %}<span class="pill bad">No aprobado</span>{% endif %}</span></div>
+            <span>{% if i.pct_voz is not none %}<span class="pill">Frase {{ pct(i.pct_voz, umbrales.frase_porcentaje) }}</span> {% endif %}{% if i.aprobado %}<span class="pill ok">Aprobado</span>{% else %}<span class="pill bad">No aprobado</span>{% endif %}</span></div>
           <div class="sub-muted">{{ (i.creado or "")[:19] | replace("T", " ") }} UTC{% if i.duracion_ms %} · análisis de {{ (i.duracion_ms / 1000) | round(1) }} s{% endif %}</div>
           {% if i.texto %}<p style="margin:8px 0 0">{{ i.texto }}</p>{% endif %}
           {% if i.motivos %}<p class="sub-muted" style="margin:8px 0 2px">Lo que vio la persona:</p>
@@ -159,6 +159,11 @@
           </table>
           {% if i.video_px %}<p class="nota">Video recibido: {{ i.video_px }} px. La cara en rojo mide menos de 112 px (el tamaño al que compara el modelo): suele indicar que el teléfono estaba lejos.</p>{% endif %}
           <p class="nota">Con tramo de frase, solo el tramo <b>frase</b> decide contra la INE; los de gestos se comparan contra la frase (misma persona).</p>
+          {% endif %}
+          {% if i.audio and i.audio.relacion_db is not none %}
+          <p class="nota">Audio: voz {{ i.audio.voz_db }} dB · fondo {{ i.audio.fondo_db }} dB · diferencia
+            <span class="{{ 'bajo' if i.audio.relacion_db < 10 else 'alto' }}">{{ i.audio.relacion_db }} dB</span>{% if i.audio.limpiado %} (con limpieza){% endif %}.
+            Menos de 10 dB: mucho ruido para la frase; más de 20 dB: audio limpio.</p>
           {% endif %}
 
           {% set r = i.resumen %}

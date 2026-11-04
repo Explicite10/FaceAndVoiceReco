@@ -53,6 +53,27 @@
               <label for="frase">Frase que leerá la persona ({{ min_palabras }} a {{ max_palabras }} palabras)</label>
               <textarea class="input" id="frase" name="frase" maxlength="500" required>{{ frase }}</textarea>
             </div>
+            <details class="field">
+              <summary>Apariencia (lo mismo que puede mandar el proyecto)</summary>
+              <div class="field">
+                <label for="titulo">Título de la pantalla</label>
+                <input class="input" id="titulo" name="titulo" maxlength="80" placeholder="Confirma que eres tú" />
+              </div>
+              <div class="fila2">
+                <div class="field">
+                  <label for="color_primario">Color primario (hex)</label>
+                  <input class="input" id="color_primario" name="color_primario" placeholder="#1B56D6" />
+                </div>
+                <div class="field">
+                  <label for="color_secundario">Color secundario (hex)</label>
+                  <input class="input" id="color_secundario" name="color_secundario" placeholder="#0E9F6E" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="logo">Logo (PNG, JPEG o WEBP, máx. 1 MB)</label>
+                <input class="input" id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp" />
+              </div>
+            </details>
             <div class="fila2">
               <div class="field">
                 <label for="umbral">% mínimo de rostro contra la INE</label>
@@ -78,6 +99,8 @@
             <dt>Persona real</dt><dd>{{ (umbrales.persona_real_probabilidad * 100) | round(1) }}%</dd>
             <dt>Coseno que vale 50%</dt><dd>{{ umbrales.similitud_coseno_al_50 }}</dd>
             <dt>Modelo de voz</dt><dd>{{ umbrales.modelo_voz }}</dd>
+            <dt>Limpieza de audio</dt><dd>{{ "sí" if umbrales.limpieza_audio else "no" }}</dd>
+            <dt>Frase como contexto del ASR</dt><dd>{{ "sí" if umbrales.frase_como_contexto else "no" }}</dd>
           </dl>
           <p class="nota">Si en el servidor hay <code>FACE_MATCH_PERCENT</code>, <code>SAME_PERSON_PERCENT</code> o <code>ASR_MODEL_SIZE</code>
              en el <code>.env</code>, usa los mismos valores aquí.</p>
@@ -89,7 +112,7 @@
         {% if previas %}
         <div class="table-wrap">
           <table class="lab-tabla">
-            <thead><tr><th>Fecha</th><th>Prueba</th><th>Intentos</th><th>Rostro (último)</th><th>Resultado</th><th></th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Prueba</th><th>Intentos</th><th>Rostro (último)</th><th>Frase (último)</th><th>Resultado</th><th></th></tr></thead>
             <tbody>
               {% for f in previas %}
               <tr>
@@ -97,6 +120,7 @@
                 <td>{{ f.etiqueta }}</td>
                 <td>{{ f.intentos }}</td>
                 <td>{% if f.pct is not none %}{{ f.pct }}%{% else %}—{% endif %}</td>
+                <td>{% if f.pct_voz is not none %}{{ f.pct_voz }}%{% else %}—{% endif %}</td>
                 <td>
                   {% if f.aprobada %}<span class="pill ok">Aprobada</span>
                   {% elif f.aprobada == false %}<span class="pill bad">No aprobada</span>

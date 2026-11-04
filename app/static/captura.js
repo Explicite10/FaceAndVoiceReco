@@ -185,7 +185,10 @@ async function abrirCamara() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: { echoCancellation: true, noiseSuppression: true },
+      // Mono a 48 kHz: lo que mejor codifica Opus; el supresor del navegador quita
+      // zumbidos constantes (no voces de fondo).
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+               channelCount: { ideal: 1 }, sampleRate: { ideal: 48000 } },
     });
   } catch (e) {
     stream = null;
@@ -354,12 +357,13 @@ async function grabar(reto) {
   btnGrabar.textContent = "Empezar grabación";
   // La pantalla se arma debajo del cargador: asi el video ya se esta pintando.
   show("sCamara");
-  const [hayImagen] = await Promise.all([
-    camaraLista(video),
-    // El detector carga desde que abre la pagina; no se espera de mas.
-    Promise.race([detector, esperarMs(6000)]),
-  ]);
+  const hayImagen = await camaraLista(video);
+  // El detector carga desde que abre la pagina. El cargador se queda hasta que
+  // este listo: si se quitara antes, el boton seguiria gris sin explicacion.
+  cargando("Preparando la verificación", "Un momento, estamos cargando el detector de rostro.");
+  await Promise.race([detector, esperarMs(45000)]);
   if (!hayImagen) $("pista").textContent = "Se ve muy oscuro. Busca más luz para que te veamos bien.";
+  guiar("encuadre");
   listo();
 
   // Se graba lo que se ve, ya derecho: cada cuadro de la camara se dibuja en un lienzo
@@ -370,10 +374,12 @@ async function grabar(reto) {
 
   const mime = pickMime();
   const chunks = [];
-  // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida.
+  // 1.2 Mbps sobra para 640x480 y aligera la codificacion y la subida. El audio a
+  // 96 kbps: algunos Android graban a 32 kbps por omision y la voz llega apagada.
   let recorder;
   try {
-    recorder = new MediaRecorder(streamGrabacion, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1_200_000 });
+    recorder = new MediaRecorder(streamGrabacion, { ...(mime ? { mimeType: mime } : {}),
+                                                    videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 96_000 });
   } catch {
     // Algunos navegadores rechazan el formato o la tasa: se deja que elijan.
     recorder = new MediaRecorder(streamGrabacion);
@@ -422,6 +428,7 @@ async function grabar(reto) {
       return;
     }
     fase = "frase";
+    guiar("fuera");
     fraseInicio = (performance.now() - inicioRec) / 1000;
     $("sCamara").classList.add("leyendo");
     mostrarPaso("frase", "Ahora lee la frase en voz alta", "Mirando a la cámara, con voz clara.");
@@ -458,6 +465,7 @@ async function grabar(reto) {
   btnGrabar.onclick = () => {
     if (fase !== "encuadre") return;
     fase = "cuenta";
+    guiar("grabando");
     btnGrabar.hidden = true;
     const numero = $("cuentaAtras");
     let n = 3;
@@ -474,11 +482,37 @@ async function grabar(reto) {
     tic();
   };
 
-  // Solo deja empezar con el rostro a la vista (sin detector, de inmediato).
-  function encuadre(veRostro) {
-    const ok = !det || veRostro;
+  // Solo deja empezar con el rostro a la vista y a buena distancia (sin detector, de inmediato).
+  function encuadre(veRostro, f) {
+    const distancia = det && veRostro && f ? distanciaCara(f) : "ok";
+    const ok = !det || (veRostro && distancia === "ok");
     btnGrabar.disabled = !ok;
-    $("instruccion").textContent = ok ? "Todo listo para empezar" : "Coloca tu rostro frente a la cámara";
+    $("instruccion").textContent = ok ? "Todo listo para empezar" : "Coloca tu rostro dentro del óvalo";
+    if (!det) return;
+    const g = $("guia");
+    g.classList.toggle("ok", ok);
+    g.classList.toggle("ajustar", veRostro && !ok);
+    const texto = $("guiaTexto");
+    texto.textContent = !veRostro ? "Coloca tu rostro dentro del óvalo"
+      : distancia === "lejos" ? "Acércate un poco" : distancia === "cerca" ? "Aléjate un poco" : "Así está bien";
+    texto.hidden = false;
+  }
+
+  // Ancho de la cara como fraccion del cuadro. A 640 px de ancho, 0.2 son 128 px:
+  // el modelo compara a 112 px, asi que abajo de eso el parecido con la INE baja.
+  function distanciaCara(f) {
+    if (f.ancho == null) return "ok";
+    if (f.ancho < 0.2) return "lejos";
+    if (f.ancho > 0.62) return "cerca";
+    return "ok";
+  }
+
+  // Ovalo guia: oscurece el fondo al encuadrar; al grabar queda solo el contorno.
+  function guiar(modo) {
+    const g = $("guia");
+    g.hidden = modo === "fuera";
+    g.classList.toggle("suave", modo === "grabando");
+    if (modo !== "encuadre") { g.classList.remove("ok", "ajustar"); $("guiaTexto").hidden = true; }
   }
 
   function cumplido(gesto, f, hands) {
@@ -607,7 +641,7 @@ async function grabar(reto) {
     if (f) lastFace = f;
     if (fase === "encuadre") {
       faceRun = f ? faceRun + 1 : 0;
-      encuadre(faceRun >= TH.faceFrames);
+      encuadre(faceRun >= TH.faceFrames, f);
     } else if (fase === "gesto") {
       const gesto = gestos[paso].gesture;
       const listo = det ? cumplido(gesto, f, hands) : now - desde > 3500;

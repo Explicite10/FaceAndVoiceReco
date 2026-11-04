@@ -12,6 +12,20 @@ from PIL import Image
 from app.services.upload_io import read_upload_limited
 
 _HEX = re.compile(r"#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
+TITULO = "Confirma que eres tú"
+TITULO_MAX = 80
+
+
+def titulo(texto: str | None) -> str | None:
+    """Encabezado de la pantalla, en una linea. Vacio -> None (se usa el generico)."""
+    if not texto:
+        return None
+    limpio = " ".join(texto.split())
+    if not limpio:
+        return None
+    if len(limpio) > TITULO_MAX:
+        raise HTTPException(status_code=422, detail=f"titulo no debe pasar de {TITULO_MAX} caracteres.")
+    return limpio
 LOGO_MAX_MB = 1
 LOGO_MAX_LADO = 2000
 # SVG no: servido desde este dominio podria ejecutar scripts.

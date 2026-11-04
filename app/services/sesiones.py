@@ -99,6 +99,7 @@ class Sesion:
     entrega: dict | None = None
     olvidar_en: datetime | None = None
     # Marca del proyecto en la pantalla (opcional).
+    titulo: str | None = None
     color_primario: str | None = None
     color_secundario: str | None = None
     logo: tuple[bytes, str] | None = field(default=None, repr=False)
@@ -486,6 +487,7 @@ async def crear_sesion(
     umbral_rostro: float | None = Form(None, ge=1, le=100, description="% minimo de similitud con la INE. Por defecto 70."),
     metadata: str | None = Form(None, description='Objeto JSON que vuelve en el aviso (max 4 KB), ej. {"tramite": "alta"}'),
     logo: UploadFile | None = File(None, description="Logo para la pantalla (PNG, JPEG o WEBP, max 1 MB)."),
+    titulo: str | None = Form(None, max_length=80, description="Encabezado de la pantalla. Por defecto 'Confirma que eres tú'."),
     color_primario: str | None = Form(None, description="Hexadecimal, ej. #1B56D6: botones y paso actual."),
     color_secundario: str | None = Form(None, description="Hexadecimal: pasos completados y carga."),
     incluir_video: bool = Form(False, description="El webhook trae una liga temporal al video (mp4) del intento final."),
@@ -536,6 +538,7 @@ async def crear_sesion(
         creada=ahora(),
         expira=ahora() + timedelta(minutes=expira_minutos or settings.session_minutes),
         id_emb=id_emb,
+        titulo=marca.titulo(titulo),
         color_primario=primario,
         color_secundario=secundario,
         logo=datos_logo,
@@ -745,6 +748,7 @@ async def pagina_captura(request: Request, token: str):
             # Colores ya validados como hexadecimal: se escriben tal cual en el CSS.
             "marca": {
                 "proyecto": s.proyecto_nombre if s else "",
+                "titulo": (s.titulo if s else None) or marca.TITULO,
                 "logo_url": f"/api/v1/captura/{token}/logo" if s and s.logo else None,
                 "primario": s.color_primario if s else None,
                 "texto_primario": marca.texto_sobre(s.color_primario) if s and s.color_primario else None,

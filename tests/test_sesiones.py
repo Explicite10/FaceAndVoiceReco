@@ -411,10 +411,12 @@ async def test_marca_colores_y_logo(entorno):
     c, h = entorno["cliente"], {"X-API-Key": entorno["key"]}
     r = await c.post("/api/v1/sesiones", headers=h,
                      files={"ine_imagen": INE, "logo": ("logo.png", _png(), "application/octet-stream")},
-                     data={"frase": FRASE, "color_primario": "#18D", "color_secundario": "f5c400"})
+                     data={"frase": FRASE, "color_primario": "#18D", "color_secundario": "f5c400",
+                           "titulo": "  Verifica tu  identidad en Broker "})
     assert r.status_code == 201, r.text
     token = _token(r.json())
     pagina = (await c.get(f"/captura/{token}")).text
+    assert "<h1>Verifica tu identidad en Broker</h1>" in pagina and "<title>Verifica tu identidad en Broker</title>" in pagina
     assert "--accent: #1188dd; --accent-text: #ffffff;" in pagina
     assert "--accent-2: #f5c400;" in pagina
     assert f'src="/api/v1/captura/{token}/logo"' in pagina
@@ -424,6 +426,9 @@ async def test_marca_colores_y_logo(entorno):
 
 
 async def test_sin_marca_usa_colores_genericos(entorno):
+    pagina = (await entorno["cliente"].get(f"/captura/{_token(await _crear(entorno))}")).text
+    assert "<h1>Confirma que eres tú</h1>" in pagina
+
     s = await _crear(entorno)
     pagina = (await entorno["cliente"].get(f"/captura/{_token(s)}")).text
     assert "--accent:" not in pagina and "<header class=\"brand\"" not in pagina

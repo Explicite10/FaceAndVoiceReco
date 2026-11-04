@@ -99,6 +99,7 @@ Content-Type: multipart/form-data
 | `expira_minutos` | número | no | Vigencia del enlace, de 5 a 1440. Por defecto 30. |
 | `umbral_rostro` | número | no | Porcentaje mínimo de parecido con la INE, de 1 a 100. Por defecto 70. |
 | `metadata` | texto | no | Un objeto JSON en texto (máx. 4 KB), ej. `{"tramite":"alta"}`. Vuelve tal cual en el resultado. |
+| `titulo` | texto | no | Encabezado de la pantalla del usuario (máx. 80 caracteres). Por defecto "Confirma que eres tú". |
 | `logo` | archivo | no | Logo para la pantalla del usuario. PNG, JPEG o WEBP; máximo 1 MB y 2000 px por lado. |
 | `color_primario` | texto | no | Color hexadecimal (`#1B56D6` o `#18D`). Se usa en botones y en el paso actual. |
 | `color_secundario` | texto | no | Color hexadecimal. Se usa en los pasos completados y en la animación de carga. |

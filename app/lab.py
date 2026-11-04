@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import settings
-from app.services import evidencia, sesiones
+from app.services import evidencia, marca, sesiones
 from app.services.errors import CheckError
 from app.services.face_engine import MAX_GIRO_FRENTE, detect_faces, pick_best_face, pose
 from app.services.identity_verification import embed_id_image
@@ -75,7 +75,9 @@ def _umbrales() -> dict:
         "persona_real_probabilidad": settings.antispoof_threshold,
         "similitud_coseno_al_50": settings.sim_threshold,
         "intentos_por_sesion": settings.session_max_attempts,
-        "modelo_voz": settings.asr_model_size,
+        "modelo_voz": f"{settings.asr_model_size} ({settings.asr_device})",
+        "limpieza_audio": settings.audio_clean,
+        "frase_como_contexto": settings.asr_initial_prompt,
     }
 
 
@@ -137,7 +139,9 @@ def _guardar(s: sesiones.Sesion) -> None:
 
 
 async def _crear(request: Request, etiqueta: str, ine: bytes, nombre_archivo: str, frase: str,
-                 umbral: float, max_intentos: int) -> sesiones.Sesion:
+                 umbral: float, max_intentos: int, apariencia: dict | None = None) -> sesiones.Sesion:
+    """`apariencia`: titulo, color_primario, color_secundario y logo (bytes, tipo), ya validados."""
+    apariencia = apariencia or {}
     # La INE pasa por la misma lectura que en produccion (EXIF, formato, enderezar).
     np_ine = await sesiones._leer_ine(UploadFile(file=io.BytesIO(ine), filename=nombre_archivo))
     diagnostico = await asyncio.to_thread(diagnostico_ine, np_ine)
@@ -173,10 +177,14 @@ async def _crear(request: Request, etiqueta: str, ine: bytes, nombre_archivo: st
         local=True,
         al_registrar=_guardar,
         medidas_ine=medidas_ine,
+        titulo=apariencia.get("titulo"),
+        color_primario=apariencia.get("color_primario"),
+        color_secundario=apariencia.get("color_secundario"),
+        logo=apariencia.get("logo"),
     )
     _corridas[sid] = {
         "etiqueta": etiqueta,
-        "params": {"frase": frase, "umbral": umbral, "max_intentos": max_intentos},
+        "params": {"frase": frase, "umbral": umbral, "max_intentos": max_intentos, "apariencia": apariencia},
         "ine": ine,
         "nombre_archivo": nombre_archivo,
         "rostro_ine": rostro_ine,
@@ -200,6 +208,7 @@ def _intento(i: dict) -> dict:
         except Exception:
             resumen = None
     cara = (r or {}).get("details", {}).get("face") or {}
+    voz = ((r or {}).get("details", {}).get("voice") or {}).get("phrase_match") or {}
     # Tamano de la cara en cada tramo (fuera del reporte, en "medidas").
     medidas = (i.get("respuesta") or {}).get("medidas") or {}
     video = {m["tramo"]: {"cara_px": m.get("cara_px"), "nitidez": m.get("nitidez")}
@@ -211,6 +220,8 @@ def _intento(i: dict) -> dict:
         "resumen": resumen,
         "tramos": [{**t, **video.get(t["index"], {})} for t in cara.get("segments") or []],
         "video_px": medidas.get("video", {}).get("resolucion"),
+        "audio": medidas.get("audio"),
+        "pct_voz": voz.get("match_percent"),
         "errores": (r or {}).get("errors") or [],
         "json": json.dumps(r if r is not None else i.get("respuesta"), ensure_ascii=False, indent=2),
     }
@@ -227,12 +238,14 @@ def _previas() -> list[dict]:
         except (OSError, ValueError):
             continue
         ultimo = d["intentos"][-1] if d.get("intentos") else None
-        pct = None
+        pct = pct_voz = None
         if ultimo and (ultimo.get("respuesta") or {}).get("reporte"):
-            pct = ((ultimo["respuesta"]["reporte"].get("details") or {}).get("face") or {}).get("similarity", {}).get("average_percent")
+            det = ultimo["respuesta"]["reporte"].get("details") or {}
+            pct = (det.get("face") or {}).get("similarity", {}).get("average_percent")
+            pct_voz = ((det.get("voice") or {}).get("phrase_match") or {}).get("match_percent")
         filas.append({"archivo": nombre, "id": d["sesion_id"], "etiqueta": d.get("etiqueta"), "creada": d.get("creada"),
                       "estado": d.get("estado"), "aprobada": d.get("aprobada"), "intentos": len(d.get("intentos") or []),
-                      "pct": pct, "en_memoria": d["sesion_id"] in _corridas})
+                      "pct": pct, "pct_voz": pct_voz, "en_memoria": d["sesion_id"] in _corridas})
     return filas
 
 
@@ -263,12 +276,23 @@ async def nueva(
     frase: str = Form(..., max_length=500),
     umbral_rostro: float = Form(settings.face_match_percent, ge=1, le=100),
     max_intentos: int = Form(settings.session_max_attempts, ge=1, le=5),
+    titulo: str = Form("", max_length=200),
+    color_primario: str = Form(""),
+    color_secundario: str = Form(""),
+    logo: UploadFile | None = File(None),
 ):
     try:
         frase = sesiones._validar_frase(frase)
         datos = await read_upload_limited(ine_imagen, settings.max_image_mb, "'ine_imagen'")
+        # Misma validacion de marca que el endpoint de sesiones.
+        apariencia = {
+            "titulo": marca.titulo(titulo),
+            "color_primario": marca.color(color_primario, "color_primario"),
+            "color_secundario": marca.color(color_secundario, "color_secundario"),
+            "logo": await marca.logo(logo),
+        }
         s = await _crear(request, etiqueta.strip() or "sin nombre", datos, ine_imagen.filename or "ine.jpg",
-                         frase, umbral_rostro, max_intentos)
+                         frase, umbral_rostro, max_intentos, apariencia)
     except HTTPException as exc:
         # Mismos errores que veria el proyecto al crear la sesion, en la pagina.
         return _pagina_inicio(request, str(exc.detail), frase, etiqueta)
@@ -282,7 +306,8 @@ async def repetir(request: Request, sid: str):
     if not c:
         raise HTTPException(status_code=404, detail="Esa INE ya no está en memoria: súbela de nuevo.")
     p = c["params"]
-    s = await _crear(request, c["etiqueta"], c["ine"], c["nombre_archivo"], p["frase"], p["umbral"], p["max_intentos"])
+    s = await _crear(request, c["etiqueta"], c["ine"], c["nombre_archivo"], p["frase"], p["umbral"], p["max_intentos"],
+                     p.get("apariencia"))
     return RedirectResponse(f"/lab/resultado/{s.id}", status_code=303)
 
 
