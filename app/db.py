@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS sesiones (
 CREATE INDEX IF NOT EXISTS sesiones_creada ON sesiones (creada DESC);
 -- Retos pedidos: la persona activo la camara para grabar.
 ALTER TABLE sesiones ADD COLUMN IF NOT EXISTS retos integer NOT NULL DEFAULT 0;
+-- Con que navegador abrio la persona la prueba y si le faltaba algo (compatibilidad).
+ALTER TABLE sesiones ADD COLUMN IF NOT EXISTS navegador jsonb;
 
 CREATE TABLE IF NOT EXISTS intentos (
     id          bigserial PRIMARY KEY,
@@ -139,7 +141,7 @@ async def rotar_qr() -> str:
 
 def _sesion_vacia(sid: str) -> dict:
     return {"id": sid, "creada": _ahora(), "pruebas": 0, "aprobadas": 0, "retos": 0,
-            "ultima_prueba": None, "ultimo_tipo": None, "ultimo_aprobado": None}
+            "ultima_prueba": None, "ultimo_tipo": None, "ultimo_aprobado": None, "navegador": None}
 
 
 def nuevo_id_sesion() -> str:
@@ -176,6 +178,17 @@ async def asegurar_sesion(sid: str) -> None:
         return
     async with _pool.acquire() as conn:
         await conn.execute(_ASEGURAR, sid)
+
+
+async def guardar_navegador(sid: str, datos: dict) -> None:
+    """Con que navegador abrio la persona y que le faltaba; solo informativo para el panel."""
+    if _pool is None:
+        s = _mem_sesiones.get(sid)
+        if s is not None:
+            s["navegador"] = datos
+        return
+    async with _pool.acquire() as conn:
+        await conn.execute("UPDATE sesiones SET navegador = $2 WHERE id = $1", sid, json.dumps(datos))
 
 
 async def registrar_reto(sid: str) -> None:
@@ -430,7 +443,8 @@ async def detalle_sesion(sid: str) -> dict | None:
     else:
         async with _pool.acquire() as conn:
             s = await conn.fetchrow(
-                "SELECT id, creada, pruebas, retos, ultima_prueba, ultimo_tipo, ultimo_aprobado FROM sesiones WHERE id = $1",
+                "SELECT id, creada, pruebas, retos, ultima_prueba, ultimo_tipo, ultimo_aprobado, navegador "
+                "FROM sesiones WHERE id = $1",
                 sid)
             if s is None:
                 return None
@@ -445,6 +459,7 @@ async def detalle_sesion(sid: str) -> dict | None:
             **_fila(s),
             "retos": s["retos"],
             "ultima_prueba": s["ultima_prueba"].isoformat() if s["ultima_prueba"] else None,
+            "navegador": json.loads(s["navegador"]) if isinstance(s["navegador"], str) else s["navegador"],
         },
         "intentos": [_intento(i, evidencias) for i in intentos],
         # Pruebas de antes de que se guardara el detalle por intento.

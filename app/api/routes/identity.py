@@ -86,7 +86,40 @@ async def visita(request: Request) -> Response:
     if sid and not await db.sesion_existe(sid):
         qr_scan_limiter(request)  # registros nuevos por IP: aqui ya solo llegan navegadores reales
         await db.asegurar_sesion(sid)
+    # Opcional: la pagina dice con que navegador abrio y si le falta algo para funcionar.
+    datos = await _leer_navegador(request)
+    if sid and datos:
+        if datos["faltan"]:
+            logger.warning("Navegador incompatible en la sesion %s: faltan %s | %s", sid,
+                           ", ".join(REQUISITOS.get(f, f) for f in datos["faltan"]), datos["agente"])
+        await db.guardar_navegador(sid, datos)
     return Response(status_code=204)
+
+
+# Lo que la pagina revisa antes de empezar; las llaves son las que manda index.html.
+REQUISITOS = {
+    "https": "Conexion segura (HTTPS)",
+    "camara": "Acceso a la camara (getUserMedia)",
+    "grabacion": "Grabacion de video (MediaRecorder)",
+}
+
+
+async def _leer_navegador(request: Request) -> dict | None:
+    if "json" not in (request.headers.get("content-type") or ""):
+        return None
+    try:
+        datos = await request.json()
+    except Exception:
+        return None
+    if not isinstance(datos, dict):
+        return None
+    faltan = [str(f)[:40] for f in (datos.get("faltan") or []) if isinstance(f, str)][:10]
+    return {
+        "agente": str(datos.get("agente") or "")[:400],
+        "faltan": faltan,
+        "detector": bool(datos.get("detector", True)),
+        "compatible": not faltan,
+    }
 
 
 @router.post(

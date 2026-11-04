@@ -376,6 +376,16 @@
       modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });
 
       function dato(etiqueta, valor) { return `<div><dt>${etiqueta}</dt><dd>${valor}</dd></div>`; }
+      // Con que abrio la persona la prueba y si le faltaba algo para que funcionara.
+      const REQUISITOS = { https: "conexión segura (HTTPS)", camara: "acceso a la cámara", grabacion: "grabación de video (MediaRecorder)" };
+      function navegador(n) {
+        if (!n) return '<span class="muted">sin dato</span>';
+        const faltan = (n.faltan || []).map((f) => REQUISITOS[f] || f);
+        const estado = faltan.length
+          ? `<b style="color:var(--danger, #b8322a)">No compatible:</b> le falta ${esc(faltan.join(", "))}. `
+          : n.detector === false ? '<span class="muted">Compatible, sin detector de rostro en vivo.</span> ' : "";
+        return `${estado}<span class="muted" style="word-break:break-all;font-size:12px">${esc(n.agente || "—")}</span>`;
+      }
 
       async function abrirRegistro(sid) {
         const yo = ++pedido;
@@ -408,7 +418,8 @@
           dato("Escaneó el código", hora(s.creada)) +
           dato("Inició la prueba", s.retos > 0 || s.pruebas > 0 ? "Sí" : "No") +
           dato("Pruebas enviadas", s.pruebas) +
-          dato("Última prueba", s.ultima_prueba ? hora(s.ultima_prueba) : "—");
+          dato("Última prueba", s.ultima_prueba ? hora(s.ultima_prueba) : "—") +
+          dato("Navegador", navegador(s.navegador));
 
         if (!intentos.length) {
           $("regDetalle").innerHTML = sin_detalle

@@ -308,3 +308,18 @@ def test_encabezados_y_sin_docs():
     assert r.headers["cache-control"] == "no-store"
     for ruta in ("/docs", "/redoc", "/openapi.json"):
         assert c.get(ruta).status_code == 404
+
+
+def test_visita_guarda_el_navegador_y_avisa_si_no_es_compatible(caplog):
+    c = cliente()
+    c.get(f"/p/{asyncio.run(db.qr_token())}")
+    r = c.post("/api/visita", json={"agente": "Mozilla/5.0 (Linux; Android 6.0)", "faltan": ["grabacion"],
+                                    "detector": False})
+    assert r.status_code == 204
+    assert "Navegador incompatible" in caplog.text and "MediaRecorder" in caplog.text
+    sid = next(iter(db._mem_sesiones))
+    n = asyncio.run(db.detalle_sesion(sid))["sesion"]["navegador"]
+    assert n["compatible"] is False and n["faltan"] == ["grabacion"] and n["detector"] is False
+    # Sin cuerpo (como antes) sigue funcionando y no toca el dato.
+    assert c.post("/api/visita").status_code == 204
+    assert asyncio.run(db.detalle_sesion(sid))["sesion"]["navegador"]["faltan"] == ["grabacion"]

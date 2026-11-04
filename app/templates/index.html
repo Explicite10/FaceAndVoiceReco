@@ -847,6 +847,16 @@
         };
       }
 
+      // Lo que el navegador necesita para la captura. Devuelve las llaves de lo que falta
+      // (vacio = compatible); el panel las muestra con su nombre.
+      function compatibilidad() {
+        const faltan = [];
+        if (!window.isSecureContext) faltan.push("https");
+        if (!navigator.mediaDevices?.getUserMedia) faltan.push("camara");
+        if (!window.MediaRecorder || !pickMime()) faltan.push("grabacion");
+        return faltan;
+      }
+
       function pickMime() {
         const opts = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
         return opts.find((o) => window.MediaRecorder && MediaRecorder.isTypeSupported(o)) || "";
@@ -1389,7 +1399,19 @@
       dropzone("idFile");
       camaraPara("idFileCam", "idFile");
       // La pagina cargo en un navegador real: ahora si cuenta como escaneo en el tablero.
-      fetch("api/visita", { method: "POST" }).catch(() => {});
+      // Se manda tambien con que navegador abrio y si le falta algo para la captura.
+      const incompatible = compatibilidad();
+      fetch("api/visita", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agente: navigator.userAgent, faltan: incompatible,
+                               detector: !!(window.WebAssembly && window.Worker && window.createImageBitmap) }),
+      }).catch(() => {});
+      if (incompatible.length) {
+        $("aviso").textContent = incompatible.includes("https")
+          ? "Este navegador no puede hacer la verificación: la página debe abrirse con una conexión segura (https)."
+          : "Este navegador no puede hacer la verificación. Abre este mismo enlace en Chrome o Safari actualizados; si llegaste desde otra app (correo, WhatsApp, un lector de QR), toca \"Abrir en el navegador\".";
+        $("btnIniciar").disabled = true;
+      }
       refreshSend();
     </script>
 
